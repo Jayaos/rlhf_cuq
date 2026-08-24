@@ -1,0 +1,7 @@
+# Additive local-asset overlay. Merge this after the immutable Coste
+# rm-pythia-44m entry so only the model and dataset locations change.
+rm-pythia-44m-cluster:
+  model_name: assets/proxy_rm_sft_base
+  datasets:
+    - custom_hf_pref:
+        dataset_path: assets/coste_preference_dataset

@@ -1,0 +1,22 @@
+name: rlhf-cuq
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip=23.2.1
+  - setuptools=68.1.2
+  - setuptools-scm=7.1.0
+  - wheel=0.41.2
+  - flit-core=3.9.0
+  - git
+  - git-lfs
+  - cmake=3.25.0
+  - ninja=1.11.1
+  - packaging=23.1
+  - pytorch=2.0.1
+  - torchvision=0.15.2
+  - torchaudio=2.0.2
+  - pytorch-cuda=11.8
+  - cuda-nvcc=11.8

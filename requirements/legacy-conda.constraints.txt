@@ -1,0 +1,28 @@
+# Compatibility constraints for the Conda CUDA 11.8 environment.
+#
+# This mirrors legacy-cu118.constraints.txt, except that the Conda PyTorch
+# build uses the PEP 440 version 2.0.1 instead of the wheel-local
+# 2.0.1+cu118 tag. environment.cluster.yml supplies the CUDA-enabled build.
+accelerate==0.22.0
+bitsandbytes==0.41.1
+cmake==3.25.0
+datasets==2.14.4
+deepspeed==0.10.1
+flash-attn==2.0.8
+huggingface-hub==0.16.4
+ninja==1.11.1
+numpy==1.25.2
+packaging==23.1
+pandas==2.0.3
+peft==0.2.0
+pyarrow==13.0.0
+pydantic==1.10.7
+PyYAML==6.0.1
+safetensors==0.3.3
+tokenizers==0.13.3
+torch==2.0.1
+torchtyping==0.1.4
+tqdm==4.66.1
+transformers==4.31.0
+triton==2.0.0
+wandb==0.15.8

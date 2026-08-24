@@ -1,0 +1,7 @@
+# Install this file with --no-deps. Editable installation is required for the
+# pinned Open Assistant model package because its wheel metadata lists only the
+# top-level model_training package and omits imported subpackages.
+-e git+https://github.com/LAION-AI/Open-Assistant.git@e1769c102f1597cc0b53a8b915f858239d197aeb#egg=model_training&subdirectory=model
+-e git+https://github.com/LAION-AI/Open-Assistant.git@e1769c102f1597cc0b53a8b915f858239d197aeb#egg=oasst_data&subdirectory=oasst-data
+-e git+https://github.com/CarperAI/trlx.git@3340c2f3a56d1d14fdd5f13ad575121fa26b6d92#egg=trlx
+-e git+https://github.com/tlc4418/alpaca_farm.git@f92bd550130975436301ba02137b303d1eb59986#egg=alpaca_farm

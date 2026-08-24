@@ -1,0 +1,62 @@
+# Opt-in, one-update setup check derived from configs/ppo_config.yaml.
+# Do not use this configuration for reported experiments.
+
+train:
+  seq_length: 256
+  epochs: 1
+  total_steps: 1
+  batch_size: 2
+  checkpoint_interval: 1
+  eval_interval: 1
+  checkpoint_dir: runs/ppo_smoke_checkpoints
+  pipeline: "PromptPipeline"
+  trainer: "CustomAcceleratePPOTrainer"
+
+model:
+  model_path:
+  model_arch_type: causal
+  num_layers_unfrozen: 2
+
+tokenizer:
+  tokenizer_path:
+  truncation_side: "left"
+  padding_side: "left"
+
+optimizer:
+  name: "adamw"
+  kwargs:
+    lr: 1.0e-6
+    betas: [0.9, 0.95]
+    eps: 1.0e-8
+    weight_decay: 1.0e-6
+
+scheduler:
+  name: "cosine_annealing"
+  kwargs:
+    T_max: 1
+    eta_min: 1.0e-7
+
+method:
+  name: "ppoconfig"
+  # Two avoids the singleton variance/RunningMoments NaN in legacy trlx.
+  num_rollouts: 2
+  chunk_size: 2
+  ppo_epochs: 1
+  init_kl_coef: 0.1
+  target: 6
+  horizon: 10000
+  gamma: 1
+  lam: 0.95
+  cliprange: 0.2
+  cliprange_value: 0.2
+  vf_coef: 1
+  scale_reward: false
+  ref_mean: null
+  ref_std: null
+  cliprange_reward: 10
+  gen_kwargs:
+    max_new_tokens: 16
+    top_k: 0
+    top_p: 1.0
+    do_sample: true
+    temperature: 1.0

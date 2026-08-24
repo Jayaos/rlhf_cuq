@@ -1,0 +1,512 @@
+{
+  "schema_version": "1.0.0",
+  "audit_date": "2026-08-24",
+  "project": "RLHF uncertainty quantification in the Coste et al. environment",
+  "workspace_state_at_start": {
+    "description": "The workspace contained only AGENTS.md and was not a Git repository. The Coste source was vendored from the immutable revision below.",
+    "agents_md_sha256": "b027d01b68e05eece3e275256e069fc8ca1fc9e4c09d8a391cb9e87bd61ea079"
+  },
+  "repositories": [
+    {
+      "name": "coste_llm_optimization",
+      "provider": "github",
+      "repository": "tlc4418/llm_optimization",
+      "url": "https://github.com/tlc4418/llm_optimization",
+      "ref": "main",
+      "revision": "416b03cc2c3c8125208679acd88891584d9eefd2",
+      "license": "MIT",
+      "package_versions": {
+        "llm_optimization": "0.0.1"
+      },
+      "vendored_path": ".",
+      "track_default_head": true,
+      "role": "Coste data, reward-model, PPO, evaluation, and gold-scoring baseline"
+    },
+    {
+      "name": "open_assistant",
+      "provider": "github",
+      "repository": "LAION-AI/Open-Assistant",
+      "url": "https://github.com/LAION-AI/Open-Assistant",
+      "ref": "v0.0.4-alpha2",
+      "revision": "e1769c102f1597cc0b53a8b915f858239d197aeb",
+      "license": "Apache-2.0",
+      "package_versions": {
+        "model_training": "1.0.0",
+        "oasst_data": "1.0.0"
+      },
+      "vendored_path": null,
+      "track_default_head": false,
+      "role": "model_training and oasst_data packages; source of GPTNeoXRewardModel"
+    },
+    {
+      "name": "trlx",
+      "provider": "github",
+      "repository": "CarperAI/trlx",
+      "url": "https://github.com/CarperAI/trlx",
+      "ref": "main",
+      "revision": "3340c2f3a56d1d14fdd5f13ad575121fa26b6d92",
+      "license": "MIT",
+      "package_versions": {
+        "trlx": "0.7.0 (metadata at this commit; not the v0.7.0 tag)"
+      },
+      "vendored_path": null,
+      "track_default_head": true,
+      "role": "Legacy PPO implementation underlying Coste custom trainers"
+    },
+    {
+      "name": "coste_alpaca_farm_fork",
+      "provider": "github",
+      "repository": "tlc4418/alpaca_farm",
+      "url": "https://github.com/tlc4418/alpaca_farm",
+      "ref": "main",
+      "revision": "f92bd550130975436301ba02137b303d1eb59986",
+      "license": "Apache-2.0",
+      "package_versions": {
+        "alpaca_farm": "0.2.0"
+      },
+      "vendored_path": null,
+      "track_default_head": true,
+      "role": "AlpacaFarm reward-model class and gold-checkpoint recovery tooling"
+    }
+  ],
+  "papers": [
+    {
+      "name": "advpo_neurips_2024",
+      "title": "Mitigating Reward Overoptimization via Lightweight Uncertainty Estimation",
+      "url": "https://proceedings.neurips.cc/paper_files/paper/2024/file/94bbcb744bbada8808fda05b9d9290d6-Paper-Conference.pdf",
+      "doi": "10.52202/079017-2596",
+      "pages": 31,
+      "role": "Source of AdvPO equations and Sections 5.1/5.2 protocol"
+    },
+    {
+      "name": "coste_iclr_2024",
+      "title": "Reward Model Ensembles Help Mitigate Overoptimization",
+      "url": "https://arxiv.org/pdf/2310.02743",
+      "arxiv_version": "v2",
+      "arxiv_date": "2024-03-10",
+      "role": "Source of the Coste experimental setup and PPO hyperparameters"
+    }
+  ],
+  "huggingface_assets": [
+    {
+      "name": "initial_sft_policy",
+      "kind": "model",
+      "repo_id": "tlc4418/pythia_1.4b_sft_policy",
+      "revision": "7b927d2ca0da03b81e1532a9fec1288fd4ac4d39",
+      "last_modified": "2024-02-12T23:45:12.000Z",
+      "license": "not_declared_in_hub_metadata",
+      "role": "Initial trainable policy and fixed KL reference",
+      "required_files": [
+        {
+          "path": "config.json",
+          "size": 629,
+          "git_blob_sha1": "8a793f841e686f87a6d7308bc20525528759477e"
+        },
+        {
+          "path": "pytorch_model.bin",
+          "size": 2929891916,
+          "git_blob_sha1": "3238279f0d189feefc160d7b140445f5cf7a47e9",
+          "lfs_sha256": "a195a9a282cc335f1dcccd847b021acd88267af0a77fd95ec76a3a81b29cc7ab"
+        },
+        {
+          "path": "tokenizer.json",
+          "size": 2114683,
+          "git_blob_sha1": "28ddc0dfb46b543812148e0c0587d28f3811183d"
+        },
+        {
+          "path": "generation_config.json",
+          "size": 116,
+          "git_blob_sha1": "7deffd9980a0f49ab6740189a2baf75f916b45e0"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "size": 303,
+          "git_blob_sha1": "25a76215d7c8122d772c1df4e8f1256ae8da3248"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 446,
+          "git_blob_sha1": "14698249d358134b2d86e864def2354a21dbe490"
+        }
+      ]
+    },
+    {
+      "name": "proxy_rm_sft_base",
+      "kind": "model",
+      "repo_id": "tlc4418/pythia_70m_sft",
+      "revision": "4f0328e68e44399767f77faaa39837e148bc6971",
+      "last_modified": "2024-02-12T23:46:34.000Z",
+      "license": "not_declared_in_hub_metadata",
+      "role": "SFT base from which the effective 44M proxy reward model is trained",
+      "required_files": [
+        {
+          "path": "config.json",
+          "size": 625,
+          "git_blob_sha1": "1295eaf63ada038819ec535b5721b6523ca0f163"
+        },
+        {
+          "path": "pytorch_model.bin",
+          "size": 166002602,
+          "git_blob_sha1": "1648c58d1ca012dc78ee879a2a8233bf950be37c",
+          "lfs_sha256": "ee063d8d7fa9568c7102da4c46406f9d483f357c6467b53b196ee22ae7daaa41"
+        },
+        {
+          "path": "tokenizer.json",
+          "size": 2114683,
+          "git_blob_sha1": "432f2a2955604e10afe06e95feb141bd1f9b9450"
+        },
+        {
+          "path": "generation_config.json",
+          "size": 116,
+          "git_blob_sha1": "7deffd9980a0f49ab6740189a2baf75f916b45e0"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "size": 303,
+          "git_blob_sha1": "7b7afabc9b28ec60bc7fad8b3518e5f252ea2893"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 446,
+          "git_blob_sha1": "14698249d358134b2d86e864def2354a21dbe490"
+        }
+      ]
+    },
+    {
+      "name": "coste_preference_dataset",
+      "kind": "dataset",
+      "repo_id": "tlc4418/1.4b-policy_preference_data_gold_labelled",
+      "revision": "426ed801a0322fb15e52631cff85b17f12b4f275",
+      "last_modified": "2024-07-25T14:55:59.000Z",
+      "license": "not_declared_in_hub_metadata",
+      "role": "Static preference data for proxy-RM training and future uncertainty geometry/calibration splits",
+      "required_files": [
+        {
+          "path": "train/human_pref.json",
+          "size": 6792128,
+          "git_blob_sha1": "1f9939d0fe25bd5f151308c38aeea92906be1e08"
+        },
+        {
+          "path": "train/sft.json",
+          "size": 6774649,
+          "git_blob_sha1": "8ab6888e43aa5f3fd404b08add0c2c9aab279135"
+        },
+        {
+          "path": "train/synth_pref.json",
+          "size": 6728521,
+          "git_blob_sha1": "9571a91ab30639d599446de6ab65ee40a6c8c376"
+        },
+        {
+          "path": "train/unlabelled.json",
+          "size": 13667060,
+          "git_blob_sha1": "04a42738666569e5a94a040e0b93befb862fceab",
+          "lfs_sha256": "ad4907a58c99ac8c7ee5e0adf2fa200e748ef3630f6c5a04196211ad154666cd"
+        },
+        {
+          "path": "validation/val.json",
+          "size": 1387089,
+          "git_blob_sha1": "cbf97b7445edca7d39ff24674d5d082f515ea4cd"
+        }
+      ]
+    },
+    {
+      "name": "alpaca_farm_prompt_dataset",
+      "kind": "dataset",
+      "repo_id": "tatsu-lab/alpaca_farm",
+      "revision": "e576524ca841af3c36fd6912e68e5920430928c1",
+      "last_modified": "2023-05-29T01:00:10.000Z",
+      "license": "CC-BY-NC-4.0",
+      "role": "AlpacaFarm unlabeled PPO prompts and validation prompts",
+      "required_files": [
+        {
+          "path": "alpaca_farm.py",
+          "size": 7258,
+          "git_blob_sha1": "40e4ed7fdb497403505e494a96da42c15a075c6c"
+        },
+        {
+          "path": "alpaca_instructions/unlabeled.json",
+          "size": 8745555,
+          "git_blob_sha1": "9b7955c8bbc3cb7046bd6fc86be20af85daa9256"
+        },
+        {
+          "path": "alpaca_instructions/val.json",
+          "size": 891524,
+          "git_blob_sha1": "4e1c23b433249a5b3165da9864a5630d9a12615a"
+        }
+      ]
+    },
+    {
+      "name": "alpaca_farm_gold_rm_weight_diff",
+      "kind": "model",
+      "repo_id": "tatsu-lab/alpaca-farm-reward-model-human-wdiff",
+      "revision": "363f1a5745895431849cd1c1f451bb837646c14f",
+      "last_modified": "2023-05-31T04:13:29.000Z",
+      "license": "CC-BY-NC-4.0 per the AlpacaFarm repository; Hub metadata is undeclared; reconstruction also requires separately licensed LLaMA-7B weights",
+      "role": "Offline-only gold evaluator weight difference",
+      "required_files": [
+        {
+          "path": "pytorch_model-00001-of-00003.bin",
+          "size": 9878007698,
+          "git_blob_sha1": "fdbfbee0cc180e375f54f691752dd7944dcbfdd8",
+          "lfs_sha256": "feec926647d199e205b33b5ce91641157cd483d658541959531f8b3189b11754"
+        },
+        {
+          "path": "pytorch_model-00002-of-00003.bin",
+          "size": 9894802870,
+          "git_blob_sha1": "5abe1da2607fb3305c3ce8f1f0e2dd73831792a2",
+          "lfs_sha256": "55086a3ae91739131b2b757f18d4a931f7d0300022d31e16295b8c1198c6d531"
+        },
+        {
+          "path": "pytorch_model-00003-of-00003.bin",
+          "size": 7181025333,
+          "git_blob_sha1": "61407f441c73d571f87fff2fe373615e209c3432",
+          "lfs_sha256": "3430a29e14e7ca8a3638f6288e2449153b54aeaf131699ce8599da7a4473c054"
+        },
+        {
+          "path": "model_sum.txt",
+          "size": 13,
+          "git_blob_sha1": "50ab9d276131f28831b0586a59d8973eb82362a0"
+        },
+        {
+          "path": "config.json",
+          "size": 443,
+          "git_blob_sha1": "cf2172da7e6ade1ae05d7e075cab3827e8d7bf9d"
+        },
+        {
+          "path": "pytorch_model.bin.index.json",
+          "size": 31755,
+          "git_blob_sha1": "3b6baf67097852a44322c484df8795a94cc852f0"
+        },
+        {
+          "path": "added_tokens.json",
+          "size": 21,
+          "git_blob_sha1": "e41416ddd79948246ea2dced6800ea3cd531c424"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "size": 435,
+          "git_blob_sha1": "599f3bbfca349234cf99cbc13e132419c18aed6b"
+        },
+        {
+          "path": "tokenizer.json",
+          "size": 1843079,
+          "git_blob_sha1": "e159a018f781271cb01159a5b4c15f0648747956"
+        },
+        {
+          "path": "tokenizer.model",
+          "size": 499723,
+          "git_blob_sha1": "6c00c742ce03c627d6cd5b795984876fa49fa899",
+          "lfs_sha256": "9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 725,
+          "git_blob_sha1": "b69178f4022c747d83c8a6f6d3c75e82bd77ed25"
+        }
+      ]
+    },
+    {
+      "name": "alpaca_farm_sft10k_weight_diff",
+      "kind": "model",
+      "repo_id": "tatsu-lab/alpaca-farm-sft10k-wdiff",
+      "revision": "91b6ac09e67d4f65e87ecf0585f8790c2de7edbb",
+      "last_modified": null,
+      "license": "CC-BY-NC-4.0 per the AlpacaFarm repository; Hub metadata is undeclared; reconstruction also requires separately licensed LLaMA-7B weights",
+      "role": "Prerequisite for reconstructing the AlpacaFarm gold reward model",
+      "required_files": [
+        {
+          "path": "pytorch_model-00001-of-00003.bin",
+          "size": 9878005970,
+          "git_blob_sha1": "89420be0ab7cecb59e86628a0b9e52194d911d1d",
+          "lfs_sha256": "acf5f91cd55abc062380b8458d08b03b15b50a14e13a7b2ccfac419b42f60ed7"
+        },
+        {
+          "path": "pytorch_model-00002-of-00003.bin",
+          "size": 9894801014,
+          "git_blob_sha1": "3bea52cfbcb7605262222fbaf91cdefc06791b28",
+          "lfs_sha256": "2216ccf58dab2fb81fbe90f0ec4e7e4ec29e8bb4498a37836634ce6cece9eeee"
+        },
+        {
+          "path": "pytorch_model-00003-of-00003.bin",
+          "size": 7181007033,
+          "git_blob_sha1": "235c46a920c072b55ec2a400219a6312377eb59a",
+          "lfs_sha256": "06cd0a2ff54480ca8efd0a99beb924b7c2c4d5f682b7d7e23ec8b41e2bb935f8"
+        },
+        {
+          "path": "model_sum.txt",
+          "size": 14,
+          "git_blob_sha1": "46285f1e4cba1ea3501f9e254f76b3b0d2061fc4"
+        },
+        {
+          "path": "config.json",
+          "size": 610,
+          "git_blob_sha1": "718b6dd769fe89bbd0dcb5f8552d880b9176bb35"
+        },
+        {
+          "path": "generation_config.json",
+          "size": 132,
+          "git_blob_sha1": "9eadab41e23e7bb81f2ac25eaa08675142c6c5c2"
+        },
+        {
+          "path": "pytorch_model.bin.index.json",
+          "size": 26788,
+          "git_blob_sha1": "f9aba242a4a6c70281635e5c9514d0669449df1a"
+        },
+        {
+          "path": "added_tokens.json",
+          "size": 21,
+          "git_blob_sha1": "e41416ddd79948246ea2dced6800ea3cd531c424"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "size": 435,
+          "git_blob_sha1": "599f3bbfca349234cf99cbc13e132419c18aed6b"
+        },
+        {
+          "path": "tokenizer.json",
+          "size": 1843079,
+          "git_blob_sha1": "e159a018f781271cb01159a5b4c15f0648747956"
+        },
+        {
+          "path": "tokenizer.model",
+          "size": 499723,
+          "git_blob_sha1": "6c00c742ce03c627d6cd5b795984876fa49fa899",
+          "lfs_sha256": "9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size": 726,
+          "git_blob_sha1": "3dbd13179b721b326aae8d3a30ad77368df8599a"
+        }
+      ]
+    }
+  ],
+  "dataset_contracts": [
+    {
+      "source_asset_name": "coste_preference_dataset",
+      "repo_id": "tlc4418/1.4b-policy_preference_data_gold_labelled",
+      "revision": "426ed801a0322fb15e52631cff85b17f12b4f275",
+      "config": "default",
+      "splits": {
+        "train": 49383,
+        "validation": 2000
+      },
+      "total_rows": 51383,
+      "features": {
+        "instruction": "string",
+        "answers": "sequence[string]",
+        "preference": "int64",
+        "input": "string"
+      },
+      "observation": {
+        "date": "2026-08-24",
+        "method": "Hugging Face dataset viewer at the then-current default revision, cross-checked against the source asset SHA",
+        "online_revalidation": "The metadata audit verifies the pinned repository files, sizes, and hashes. It does not fetch rows or claim that the live viewer still serves this historical revision."
+      },
+      "semantic_constraints_not_verified_by_viewer": {
+        "answers_length": 2,
+        "preference_values": [
+          0,
+          1
+        ]
+      }
+    }
+  ],
+  "legacy_baseline_files": [
+    {
+      "path": "src/reward_modeling/scoring/score.py",
+      "sha256": "79272f261ba0b6ab635d4d509a74760300fe062ba2574c550da4068f8a0f322b",
+      "size": 4776
+    },
+    {
+      "path": "src/reward_modeling/scoring/ppo_reward_functions.py",
+      "sha256": "df87b8b85b7a9cc8d92d39bc54c878255faa9f16508fe8cc59541b4fa083a866",
+      "size": 2177
+    },
+    {
+      "path": "src/ppo/custom_helpers.py",
+      "sha256": "870e9bb4d46125f778670eb27664bef14a1424d8d993e62a1f30e668238de5fe",
+      "size": 2995
+    },
+    {
+      "path": "src/ppo/custom_trlx_trainers/custom_accelerate_base_trainer.py",
+      "sha256": "dc6fc46818866efab483a20f591909ecdcb2cb9568756b1126a2618c8b9774c2",
+      "size": 31897
+    },
+    {
+      "path": "src/ppo/custom_trlx_trainers/custom_accelerate_ppo_trainer.py",
+      "sha256": "c8ec94e03074b70883d8a6f5fe0414de434e423a588973369a836dc72e8273e6",
+      "size": 27376
+    },
+    {
+      "path": "src/data_utils/oa_custom_datasets/dataset_loader.py",
+      "sha256": "65dc775ee59c97d370b032783e7fb3cfe1300ad74096448385b035fa79e8a367",
+      "size": 4621
+    },
+    {
+      "path": "src/data_utils/oa_custom_datasets/rank_datasets.py",
+      "sha256": "a1fd5aa6fe0c6eeef18e2f17463598d440ca45e5115a13b6cbd9258dff9fb299",
+      "size": 1857
+    },
+    {
+      "path": "src/data_utils/oa_custom_datasets/get_dataset_patch.py",
+      "sha256": "5ccc16b4495fae8d82b97369e7acfc4120617d2992ae4fba1f147c8a4a29d34f",
+      "size": 2512
+    },
+    {
+      "path": "src/data_utils/rm_dataset_formatter.py",
+      "sha256": "c6725718dfc12a33cc881c2f4d675e8b6be6e6516dd6766637cb612c336068b4",
+      "size": 1440
+    },
+    {
+      "path": "src/reward_modeling/training/trainer_rm.py",
+      "sha256": "efe72a646f7769f831653d0a8a73a31e86ee1e2977422b6fcf87aac4439293e3",
+      "size": 13114
+    },
+    {
+      "path": "configs/config_rm.yaml",
+      "sha256": "c7ef6095b77fb3ea9c6b322e5cad42a5c7e10f9791c585d3e1978264ab59422f",
+      "size": 1849
+    },
+    {
+      "path": "configs/ppo_config.yaml",
+      "sha256": "32ff5ff6742e147d8766724893271e6c9c7c23f4411757ead717c8aff45c9a69",
+      "size": 1173
+    }
+  ],
+  "source_search_results": {
+    "official_advpo_code": {
+      "status": "not_found_as_of_audit_date",
+      "searched": [
+        "NeurIPS proceedings page and official PDF/checklist",
+        "OpenReview and arXiv records",
+        "paper title and AdvPO repository searches",
+        "author GitHub profiles",
+        "ByteDance GitHub organization"
+      ],
+      "community_code_adopted": false
+    },
+    "released_coste_proxy_rm": {
+      "status": "not_found_as_of_audit_date",
+      "evidence": "The tlc4418 Hugging Face account exposes only the two SFT checkpoints named above; the Coste README instructs users to train rm-pythia-44m locally.",
+      "selected_proxy_checkpoint": null
+    }
+  },
+  "unresolved_external_inputs": [
+    {
+      "name": "trained_proxy_rm_checkpoint",
+      "status": "required_before_baseline_PPO",
+      "reason": "No official released Coste 44M proxy-RM checkpoint was located. A checkpoint must be trained or explicitly supplied, then revision and reward-head hash added."
+    },
+    {
+      "name": "llama_7b_base_for_gold_reconstruction",
+      "status": "user_supplied_licensed_asset_required",
+      "reason": "AlpacaFarm publishes weight differences, not standalone reconstructed gold weights."
+    },
+    {
+      "name": "gold_rm_reconstructed_revision_and_checksum",
+      "status": "required_before_gold_scoring",
+      "reason": "The reconstructed local checkpoint depends on the exact LLaMA base and must be checksummed after AlpacaFarm's integrity check passes."
+    }
+  ]
+}

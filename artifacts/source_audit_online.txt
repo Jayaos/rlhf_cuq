@@ -1,0 +1,71 @@
+PASS manifest.schema_version: 1.0.0
+PASS manifest.unique_names: 10 unique source names
+PASS manifest.legacy_hashes: 12 hashes
+PASS local:src/reward_modeling/scoring/score.py: 79272f261ba0b6ab635d4d509a74760300fe062ba2574c550da4068f8a0f322b
+PASS local:src/reward_modeling/scoring/ppo_reward_functions.py: df87b8b85b7a9cc8d92d39bc54c878255faa9f16508fe8cc59541b4fa083a866
+PASS local:src/ppo/custom_helpers.py: 870e9bb4d46125f778670eb27664bef14a1424d8d993e62a1f30e668238de5fe
+PASS local:src/ppo/custom_trlx_trainers/custom_accelerate_base_trainer.py: dc6fc46818866efab483a20f591909ecdcb2cb9568756b1126a2618c8b9774c2
+PASS local:src/ppo/custom_trlx_trainers/custom_accelerate_ppo_trainer.py: c8ec94e03074b70883d8a6f5fe0414de434e423a588973369a836dc72e8273e6
+PASS local:src/data_utils/oa_custom_datasets/dataset_loader.py: 65dc775ee59c97d370b032783e7fb3cfe1300ad74096448385b035fa79e8a367
+PASS local:src/data_utils/oa_custom_datasets/rank_datasets.py: a1fd5aa6fe0c6eeef18e2f17463598d440ca45e5115a13b6cbd9258dff9fb299
+PASS local:src/data_utils/oa_custom_datasets/get_dataset_patch.py: 5ccc16b4495fae8d82b97369e7acfc4120617d2992ae4fba1f147c8a4a29d34f
+PASS local:src/data_utils/rm_dataset_formatter.py: c6725718dfc12a33cc881c2f4d675e8b6be6e6516dd6766637cb612c336068b4
+PASS local:src/reward_modeling/training/trainer_rm.py: efe72a646f7769f831653d0a8a73a31e86ee1e2977422b6fcf87aac4439293e3
+PASS local:configs/config_rm.yaml: c7ef6095b77fb3ea9c6b322e5cad42a5c7e10f9791c585d3e1978264ab59422f
+PASS local:configs/ppo_config.yaml: 32ff5ff6742e147d8766724893271e6c9c7c23f4411757ead717c8aff45c9a69
+PASS github:coste_llm_optimization: 416b03cc2c3c8125208679acd88891584d9eefd2
+PASS github:open_assistant: e1769c102f1597cc0b53a8b915f858239d197aeb
+PASS github:trlx: 3340c2f3a56d1d14fdd5f13ad575121fa26b6d92
+PASS github:coste_alpaca_farm_fork: f92bd550130975436301ba02137b303d1eb59986
+PASS huggingface:initial_sft_policy: 7b927d2ca0da03b81e1532a9fec1288fd4ac4d39
+PASS huggingface:initial_sft_policy:config.json: Pinned file metadata matches
+PASS huggingface:initial_sft_policy:pytorch_model.bin: Pinned file metadata matches
+PASS huggingface:initial_sft_policy:tokenizer.json: Pinned file metadata matches
+PASS huggingface:initial_sft_policy:generation_config.json: Pinned file metadata matches
+PASS huggingface:initial_sft_policy:special_tokens_map.json: Pinned file metadata matches
+PASS huggingface:initial_sft_policy:tokenizer_config.json: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base: 4f0328e68e44399767f77faaa39837e148bc6971
+PASS huggingface:proxy_rm_sft_base:config.json: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base:pytorch_model.bin: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base:tokenizer.json: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base:generation_config.json: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base:special_tokens_map.json: Pinned file metadata matches
+PASS huggingface:proxy_rm_sft_base:tokenizer_config.json: Pinned file metadata matches
+PASS huggingface:coste_preference_dataset: 426ed801a0322fb15e52631cff85b17f12b4f275
+PASS huggingface:coste_preference_dataset:train/human_pref.json: Pinned file metadata matches
+PASS huggingface:coste_preference_dataset:train/sft.json: Pinned file metadata matches
+PASS huggingface:coste_preference_dataset:train/synth_pref.json: Pinned file metadata matches
+PASS huggingface:coste_preference_dataset:train/unlabelled.json: Pinned file metadata matches
+PASS huggingface:coste_preference_dataset:validation/val.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_prompt_dataset: e576524ca841af3c36fd6912e68e5920430928c1
+PASS huggingface:alpaca_farm_prompt_dataset:alpaca_farm.py: Pinned file metadata matches
+PASS huggingface:alpaca_farm_prompt_dataset:alpaca_instructions/unlabeled.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_prompt_dataset:alpaca_instructions/val.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff: 363f1a5745895431849cd1c1f451bb837646c14f
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:pytorch_model-00001-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:pytorch_model-00002-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:pytorch_model-00003-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:model_sum.txt: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:config.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:pytorch_model.bin.index.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:added_tokens.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:special_tokens_map.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:tokenizer.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:tokenizer.model: Pinned file metadata matches
+PASS huggingface:alpaca_farm_gold_rm_weight_diff:tokenizer_config.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff: 91b6ac09e67d4f65e87ecf0585f8790c2de7edbb
+PASS huggingface:alpaca_farm_sft10k_weight_diff:pytorch_model-00001-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:pytorch_model-00002-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:pytorch_model-00003-of-00003.bin: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:model_sum.txt: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:config.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:generation_config.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:pytorch_model.bin.index.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:added_tokens.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:special_tokens_map.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:tokenizer.json: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:tokenizer.model: Pinned file metadata matches
+PASS huggingface:alpaca_farm_sft10k_weight_diff:tokenizer_config.json: Pinned file metadata matches
+PASS dataset:tlc4418/1.4b-policy_preference_data_gold_labelled:revision_binding: Contract matches the pinned dataset asset
+WARN dataset:tlc4418/1.4b-policy_preference_data_gold_labelled:recorded_contract: Counts/schema are a dated observation; online audit intentionally fetches no rows
+Summary: pass=69, warn=1, fail=0, skip=0

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm_optimization"
+description = "Reward Model Ensembles Help Mitigate Overoptimization"
+version = "0.0.1"
+requires-python = ">=3.10,<3.11"
+authors = [
+    { name = "Thomas Coste", email = "tcoste99@gmail.com" }
+]
+dependencies = [
+    "typer==0.9.0",
+]
+
+# The legacy source packages are installed editably and without dependency
+# resolution from requirements/legacy-sources.txt. Open Assistant's pinned
+# wheel omits imported subpackages and declares a moving direct trlx URL, so
+# putting those VCS references here makes a normal pip resolution both broken
+# and non-reproducible. See docs/ENVIRONMENT_LOCK.md.
+
+[tool.black]
+line-length = 120
+target-version = ['py310']
