@@ -118,6 +118,49 @@ python scripts/download_assets.py --asset-root assets --verify-only
 
 The Hub supports revision-pinned full-repository downloads and local directories through `snapshot_download`; see the [official download guide](https://huggingface.co/docs/huggingface_hub/guides/download). If a partial/corrupt transfer is reported, rerun with `--force-download`. Do not hand-edit a verified asset directory.
 
+### Build and verify the controlled data split
+
+Materialize the logical roles once, before training any RM. The builder verifies
+the pinned source payloads, creates content-derived record/prompt IDs, keeps
+duplicate prompts in one role, uses deterministic hash assignment with exact
+largest-remainder quotas, audits overlap, and writes SHA-256-protected JSONL and
+ID files. It never overwrites an existing split bundle.
+
+```bash
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
+sha256sum data/processed/coste_split_v1/manifest.json
+```
+
+For the audited source sizes, the controlled roles are:
+
+| Source pool | Logical role | Fraction | Rows |
+| --- | --- | ---: | ---: |
+| Coste preference `train` (49,383) | `D_rm_train` | 90% | 44,445 |
+| Coste preference `train` | `D_rm_val` | 5% | 2,469 |
+| Coste preference `train` | `D_cal` | 5% | 2,469 |
+| AlpacaFarm `unlabeled` (20,000) | `D_rl_train_prompts` | 80% | 16,000 |
+| AlpacaFarm `unlabeled` | `D_rl_val_prompts` | 10% | 2,000 |
+| AlpacaFarm `unlabeled` | `D_rl_test_prompts` | 10% | 2,000 |
+
+The original preference `validation` and AlpacaFarm `val` splits are retained
+as `D_rm_external_val` and `D_rl_external_val`; they are not mixed into the
+percentages. The generated manifest is authoritative if a pinned legacy content
+filter rejects any PPO source row. Archive its hash with every run.
+
+The RM adapter exposes only `D_rm_train` and `D_rm_val`; the PPO adapter exposes
+only `D_rl_train_prompts` and `D_rl_val_prompts`. `D_cal`, test, and external
+validation roles cannot enter either online trainer through this adapter. The
+fixed `D_cal` is reserved for later calibration code; no conformal score or
+adaptive-update equation is selected by this pipeline.
+
+Use this manifest route for the current and future controlled experiments. For
+an exact legacy-data regression only, run the original `trainer_rm.py` with
+`rm-pythia-44m-cluster`, or omit `coste_data_split_v1` from PPO and supply
+`--rl_dataset_path_override assets/alpaca_farm_prompt_dataset`. Label those
+runs `legacy_split`; they use the original implicit first-N/source-validation
+selection and are not directly interchangeable with `coste_split_v1` results.
+
 After verification, compute jobs can be network-independent:
 
 ```bash
@@ -139,7 +182,9 @@ This does not download LLaMA-7B and does not make gold scoring ready. The pinned
 
 ### Experiment 1: train proxy reward model(s)
 
-First train seed 1. The final local-path overlay changes only the two input paths; all Coste RM hyperparameters still come from the vendored `rm-pythia-44m` entry.
+First train seed 1. The final overlay selects the local base model and the
+manifest-backed `D_rm_train`/`D_rm_val`; all Coste RM hyperparameters still come
+from the vendored `rm-pythia-44m` entry.
 
 ```bash
 conda activate rlhf-cuq
@@ -147,8 +192,8 @@ cd "$PROJECT_ROOT"
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
-  src/reward_modeling/training/trainer_rm.py \
-  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster \
+  src/reward_modeling/training/trainer_rm_manifest.py \
+  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
   --rng_seed 1
 ```
 
@@ -184,8 +229,8 @@ export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
-  src/reward_modeling/training/trainer_rm.py \
-  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster \
+  src/reward_modeling/training/trainer_rm_manifest.py \
+  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
   --rng_seed "$SLURM_ARRAY_TASK_ID"
 ```
 
@@ -198,10 +243,9 @@ Request one Ampere-or-newer GPU (40 GiB is a conservative starting request), act
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual baseline_smoke \
+  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 baseline_smoke \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1 \
-  --rl_dataset_path_override assets/alpaca_farm_prompt_dataset
+  --proxy_rm_path_override models/rm-pythia-44m_seed1
 ```
 
 This uses two rollouts, one PPO epoch, one optimizer update, two evaluation prompts, and no gold load. It is an integration test, not a scientific experiment. Inspect `runs/ppo_smoke`, verify finite proxy/KL values, verify a checkpoint can be reloaded, and capture the environment before crossing Gate 1. The legacy evaluator can still generate up to 256 tokens even though smoke rollouts are capped at 16.
@@ -213,11 +257,10 @@ Run the single-RM checked-code baseline only after the smoke gate:
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual \
+  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 \
   --run_gold_evaluation false \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1 \
-  --rl_dataset_path_override assets/alpaca_farm_prompt_dataset
+  --proxy_rm_path_override models/rm-pythia-44m_seed1
 ```
 
 This selects `configs/ppo_config.yaml` (3,000 steps, four rollouts, chunk size two, four PPO epochs, KL coefficient 0.1). Do not describe it as a faithful paper reproduction. The legacy DeepSpeed launcher remains unvalidated because its `auto` batch fields are not wired cleanly through the custom trainer, so the commands here deliberately use the one-process launcher.
@@ -227,10 +270,9 @@ After all five RM directories exist, the configured ensemble-mean run is:
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_ensemble \
+  --configs defaults defaults_rlhf pythia_rlhf_ensemble coste_data_split_v1 \
   --run_gold_evaluation false \
-  --policy_model_path_override assets/initial_sft_policy \
-  --rl_dataset_path_override assets/alpaca_farm_prompt_dataset
+  --policy_model_path_override assets/initial_sft_policy
 ```
 
 `pythia_rlhf_ensemble` reads `models/rm-pythia-44m_seed1` through `seed5` and currently has `objective_name: mean`. WCO and UWO are separate Coste baseline experiments: create and archive separate config entries with `objective_name: WCO` or `UWO`, and set/record `uwo_weight` for UWO, before submitting each run. Do not use `--proxy_rm_path_override` for an ensemble; that override intentionally accepts only one RM.

@@ -4,7 +4,7 @@ Audit date: 2026-08-24. This is the Stage 0 record required by `AGENTS.md`; it i
 
 ## Outcome and scope
 
-The workspace initially contained only `AGENTS.md` and was not a Git repository. The Coste implementation was therefore vendored from the audited commit below. Its legacy reward/PPO path is protected by the hashes in `artifacts/source_manifest.json`. Stage 0 adds only immutable dependency pins, a read-only metadata auditor, an opt-in one-update smoke configuration, and tests. It does not implement AdvPO or any proposed-method equation.
+The workspace initially contained only `AGENTS.md` and was not a Git repository. The Coste implementation was therefore vendored from the audited commit below. Its legacy reward/PPO path is protected by the hashes in `artifacts/source_manifest.json`. Stage 0 added immutable dependency pins, a read-only metadata auditor, an opt-in one-update smoke configuration, and tests. The later controlled data adapter adds explicit split manifests without implementing AdvPO or any proposed-method equation.
 
 No clearly official public AdvPO implementation was found. The final NeurIPS paper is therefore the authoritative algorithm source. Its reproducibility checklist answers public code/data “No” while stating an intent to release later; the proceedings page, arXiv/OpenReview records, author accounts, ByteDance organization, and indexed repository searches exposed no official code as of the audit date. This is strong negative search evidence, not proof that private or unindexed code does not exist.
 
@@ -60,6 +60,14 @@ The gold model is not a standalone download. Use the pinned AlpacaFarm recovery 
 
 Gold is not supplied to `trlx.train` or the online callback. In the original entry point it runs only after training and final save. The new smoke profile explicitly skips that separate phase; the baseline default remains enabled.
 
+The trace above describes the unchanged legacy data route. The controlled
+`coste_split_v1` route instead materializes content-derived IDs and immutable
+membership files before training. Its RM wrapper supplies only `D_rm_train`
+and `D_rm_val`; the optional PPO branch supplies only
+`D_rl_train_prompts` and `D_rl_val_prompts`. Calibration/test/external roles
+remain outside those trainers. Leaving `data_split_manifest_path` empty still
+selects the original Coste loader for a separately labeled legacy baseline.
+
 ## Effective batch and step semantics
 
 For the checked config, process count `W=1`, `num_rollouts R=4`, `chunk_size C=2`, requested train batch `T=32`, and `ppo_epochs=4`.
@@ -98,6 +106,6 @@ AdvPO uses 1,500 steps, batch 64, context 2,048, max generation 512, beta 0, eva
 
 ## Required patches and acceptance state
 
-Implemented Stage 0 setup patches are behavior-preserving by default: immutable VCS pins; explicit Python 3.10 compatibility range; selectable PPO config with the old path as default; opt-in one-update config; optional local policy/proxy/dataset snapshot overrides; optional post-training gold phase with the old `true` default; and read-only provenance tests.
+Implemented setup patches are behavior-preserving by default: immutable VCS pins; explicit Python 3.10 compatibility range; selectable PPO config with the old path as default; opt-in one-update config; optional local policy/proxy/dataset snapshot overrides; optional post-training gold phase with the old `true` default; and read-only provenance tests. The manifest-backed data route is opt-in and is a declared controlled adaptation because it replaces implicit first-N/source-validation selection with the frozen logical roles.
 
 Before Gate 1, separately audited patches must validate feature identity, correct/verify gold formatting and loading, replace the single-RM variance garbage with an explicitly defined field, implement response-only globally aggregated KL without relabeling historical data, add stable sample provenance, isolate checkpoints, verify terminal indexing, and test checkpoint/resume and one-rank behavior. These known defects were recorded rather than folded into Stage 0, because changing them now would make a failed baseline impossible to attribute.

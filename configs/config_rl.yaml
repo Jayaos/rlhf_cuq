@@ -13,6 +13,7 @@ defaults_rlhf:
   policy_model_path_override: ""
   proxy_rm_path_override: ""
   rl_dataset_path_override: ""
+  data_split_manifest_path: ""
   rank_config:
   sft_config:
   debug: false

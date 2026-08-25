@@ -2,7 +2,7 @@
 
 ## Boundary
 
-This plan preserves the Coste/legacy-trlx track and implements the experiment program in acceptance-gated stages. Stage 0 is the only implemented stage. No AdvPO reward, conformal equation, pairwise geometry, or adaptive state has been coded. Any row marked **BLOCKED** depends on an explicit owner decision in `docs/OPEN_METHOD_DECISIONS.md`.
+This plan preserves the Coste/legacy-trlx track and implements the experiment program in acceptance-gated stages. Stage 0 and the Stage 1 explicit data-split seam are implemented. No AdvPO reward, conformal equation, pairwise geometry, or adaptive state has been coded. Any row marked **BLOCKED** depends on an explicit owner decision in `docs/OPEN_METHOD_DECISIONS.md`.
 
 “Baseline behavior” below means the default `defaults_rlhf + pythia_rlhf_individual` online reward/PPO computation at the pinned Coste revision. Additive diagnostics may leave that computation unchanged while still changing artifacts or runtime cost.
 
@@ -26,11 +26,21 @@ The smoke run itself remains pending because this host lacks the CUDA/Python 3.1
 
 ## Stage 1: validate and instrument the Coste baseline
 
-These changes are planned but not yet implemented. Each behavior correction must be isolated, compared to the hash-protected snapshot, and called out in an experiment manifest.
+The data-manifest seam is implemented; the remaining changes are planned but not yet implemented. Each behavior correction must be isolated, compared to the hash-protected snapshot, and called out in an experiment manifest.
+
+The first Stage 1 unit is now implemented: `configs/data_split_coste_v1.yaml`,
+`scripts/build_data_manifest.py`, `src/data_utils/split_manifest.py`, and
+`src/data_utils/manifest_dataset_loader.py` create/verify exact logical roles
+and adapt only train/validation roles to the legacy trainers. The RM wrapper
+`trainer_rm_manifest.py` avoids altering the hash-protected Coste trainer; PPO
+selects the adapter only when `data_split_manifest_path` is nonempty. Standard-
+library tests cover exact quota rounding, order independence, prompt grouping,
+disjointness, data/ID hashes, tamper failure, and trainer role isolation. A
+real-asset build and GPU trainer smoke remain target-host acceptance work.
 
 | Planned path | Existing component reused | Responsibility | Inputs → outputs | Equation | Required test | Expected cost | Baseline behavior |
 |---|---|---|---|---|---|---|---|
-| `scripts/build_data_manifest.py` | Coste preference loader; AlpacaFarm prompt loader | Materialize revision-pinned, stable, disjoint IDs for RM train/val/calibration and RL train/val/test | Pinned dataset snapshots + seed/split policy → JSONL manifests + hashes | None | Determinism, disjointness, schema, no implicit slicing | O(dataset rows), low memory streaming | Changes data selection from implicit first-N; required controlled adaptation |
+| `scripts/build_data_manifest.py` | Coste preference loader; AlpacaFarm prompt loader | **IMPLEMENTED:** materialize revision-pinned, stable, disjoint IDs for RM train/val/calibration and RL train/val/test | Pinned dataset snapshots + seed/split policy → JSONL manifests + hashes | None | CPU synthetic tests pass; real pinned-payload build pending on cluster | O(dataset rows), materialized in host memory | Changes data selection from implicit first-N; required controlled adaptation |
 | `src/reward_modeling/scoring/feature_extraction.py` and optional path in `score.py` | OA `GPTNeoXRewardModel.out_proj` | Capture the exact scalar-head input via pre-hook without duplicating pooling; return features only when requested | Tokenized prompt/answer + frozen RM → unchanged logits and optional `[batch,d]` features | `r = w^T e + c` identity only | Reconstruction tolerance, padding/EOS, split-batch equivalence, legacy output identity | Adds O(batch·d) memory/output when enabled; one existing forward | Default no; optional feature mode adds cost/artifact |
 | `src/reward_modeling/scoring/ppo_reward_functions.py` | Existing callback factory | Thread optional feature/metadata return through a backward-compatible API and define single-RM variance as absent rather than garbage | Samples/prompts/outputs → proxy scalar (+ optional feature/diagnostics) | None | Callback contract and byte-for-byte default score comparison | Negligible beyond feature capture | Correcting serialized variance changes invalid diagnostics, not online reward |
 | `src/ppo/uncertainty_logging.py` plus evaluation seam in `custom_accelerate_base_trainer.py` | Existing eval JSON serialization | Store prompt/sample IDs, optimizer/rollout step, seed, checkpoint, text, tokens, raw proxy, explicit uncertainty fields, and exact KL definitions | Gathered eval/rollout records → append-only schema-versioned JSONL | Named metrics only | Schema, rank aggregation, resume/no-duplicate records, same-sample joins | O(samples·text/features if enabled); bounded buffers | Online reward no; artifacts/runtime yes |

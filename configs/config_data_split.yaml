@@ -1,0 +1,5 @@
+# Add this overlay after the Coste RM/PPO experiment entry. The manifest is
+# generated locally by scripts/build_data_manifest.py and is never fetched from
+# a moving Hub revision.
+coste_data_split_v1:
+  data_split_manifest_path: data/processed/coste_split_v1/manifest.json

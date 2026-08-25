@@ -8,6 +8,31 @@ Datasets are needed at every step of the training pipeline:
 
 As we use Open-Assistant for our training pipeline, we need to ensure our datasets are compatible with this workflow. In our [paper](https://arxiv.org/abs/2310.02743), we use AlpacaFarm-based datasets throughout our experiments (note that for RM training we use the dataset presented in the [last section](#example-custom-preference-dataset-huggingface)). We provide functionality for using these datasets at all stages of training and demonstrate how to easily extend the current datasets to use your own custom datasets.
 
+## Controlled experiment split manifest
+
+The research adaptation in this repository does not rely on the legacy
+first-N slices described below. After downloading the pinned snapshots, run:
+
+```bash
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
+```
+
+This independently partitions the Coste preference `train` pool into
+`D_rm_train`/`D_rm_val`/`D_cal` at 90/5/5 and the AlpacaFarm `unlabeled` pool
+into `D_rl_train_prompts`/`D_rl_val_prompts`/`D_rl_test_prompts` at 80/10/10.
+The original source validation splits are preserved as external validation.
+Membership is based on content-derived IDs and a frozen hash seed, duplicate
+prompts remain grouped, and every data/ID file is checked against the generated
+manifest hash.
+
+Use `src/reward_modeling/training/trainer_rm_manifest.py` for RM training and
+merge `coste_data_split_v1` into PPO `--configs`. The adapters deliberately
+return only the corresponding train and validation roles. Calibration and test
+records can be read later with
+`src.data_utils.split_manifest.load_split_records`; neither is exposed to the
+online RM/PPO training entry points.
+
 ## Provided AlpacaFarm-based datasets
 By impementing the right classes and wrappers, we make it very straightforward to use AlpacaFarm-based datasets for your training.
 

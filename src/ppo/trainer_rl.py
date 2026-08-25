@@ -14,6 +14,7 @@ from model_training.utils.utils import (
     init_rng,
     read_yamls,
 )
+from src.data_utils.manifest_dataset_loader import get_manifest_dataset
 from src.data_utils.oa_custom_datasets.get_dataset_patch import get_dataset
 from src.ppo.custom_helpers import gold_score, get_reward_fn, process_configs
 from src.ppo.runtime_config import apply_local_asset_overrides, resolve_ppo_config_path
@@ -86,7 +87,10 @@ def main():
     trlx_config = TRLConfig.load_yaml(str(ppo_config_path))
     trlx_config.sft_config = sft_config
 
-    train, eval_dict = get_dataset(training_conf, mode="rl")
+    if getattr(training_conf, "data_split_manifest_path", ""):
+        train, eval_dict = get_manifest_dataset(training_conf, mode="rl")
+    else:
+        train, eval_dict = get_dataset(training_conf, mode="rl")
     print(train, eval_dict)
 
     # take the dataset as the eval prompt generation dataset

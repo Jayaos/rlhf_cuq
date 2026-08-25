@@ -1,0 +1,29 @@
+schema_version: "1.0.0"
+name: coste_split_v1
+assignment_seed: coste-split-v1-2026-08-24
+output_root: data/processed/coste_split_v1
+source_manifest: artifacts/source_manifest.json
+fail_on_cross_source_prompt_overlap: true
+
+preference:
+  asset_name: coste_preference_dataset
+  asset_path: assets/coste_preference_dataset
+  allocation_source_split: train
+  allocations:
+    D_rm_train: 90
+    D_rm_val: 5
+    D_cal: 5
+  preserved_splits:
+    D_rm_external_val: validation
+
+ppo:
+  asset_name: alpaca_farm_prompt_dataset
+  asset_path: assets/alpaca_farm_prompt_dataset
+  dataset_config: alpaca_instructions
+  allocation_source_split: unlabeled
+  allocations:
+    D_rl_train_prompts: 80
+    D_rl_val_prompts: 10
+    D_rl_test_prompts: 10
+  preserved_splits:
+    D_rl_external_val: val

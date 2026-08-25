@@ -5,3 +5,9 @@ rm-pythia-44m-cluster:
   datasets:
     - custom_hf_pref:
         dataset_path: assets/coste_preference_dataset
+
+# Controlled adaptation: use exact D_rm_train/D_rm_val membership from the
+# generated manifest. Invoke trainer_rm_manifest.py with this overlay.
+rm-pythia-44m-cluster-split:
+  model_name: assets/proxy_rm_sft_base
+  data_split_manifest_path: data/processed/coste_split_v1/manifest.json

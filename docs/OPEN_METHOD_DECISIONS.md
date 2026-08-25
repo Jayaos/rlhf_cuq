@@ -110,9 +110,11 @@ The checked YAML sets `is_alpacafarm_rm=false`, while the Coste README says true
 
 Keep historical `policy/kl` under an explicit legacy name. Add a new field for response-only, sequence-summed/sample-mean `0.5*log_ratio^2` with global reduction and a separate name for the k3-like estimator. Decide schema version and downstream migration; do not overwrite old JSON semantics.
 
-### Q. Dataset split manifest — OPEN pending owner allocation
+### Q. Dataset split manifest — RESOLVED for `coste_split_v1`
 
-Freeze exact sizes/IDs for `D_rm_train`, `D_rm_val`, `D_cal`, `D_rl_train_prompts`, `D_rl_val_prompts`, and `D_rl_test_prompts`. Requirements are deterministic hashing, disjoint calibration/test roles, identical PPO prompts across methods, and no order-dependent implicit slicing. The Hugging Face viewer counts are audit assertions, not the split policy.
+Owner decision on 2026-08-24: keep the two Coste source datasets separate. Hash-partition the pinned preference dataset's original `train` pool as 90% `D_rm_train`, 5% `D_rm_val`, and 5% `D_cal`. Hash-partition AlpacaFarm's pinned `unlabeled` pool as 80% `D_rl_train_prompts`, 10% `D_rl_val_prompts`, and 10% `D_rl_test_prompts`. Preserve each source's original validation split as an external evaluation split rather than moving it into training.
+
+Implementation requirements are frozen as deterministic content-derived record/prompt IDs, seed `coste-split-v1-2026-08-24`, largest-remainder exact quotas, prompt-group assignment, strict within-track disjointness, a cross-source prompt-overlap audit, identical manifests across methods/seeds, and local payload/ID hashes. This resolves allocation only; it does not resolve any conformal equation in Section 12 of `AGENTS.md`.
 
 ## Decision-record template
 

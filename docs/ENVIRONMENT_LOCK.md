@@ -99,6 +99,21 @@ python scripts/download_assets.py --asset-root assets --verify-only
 proxy path remains a locally trained/checksummed checkpoint, not a Hub
 download.
 
+Before RM or PPO training, build and verify the controlled split bundle:
+
+```bash
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
+sha256sum data/processed/coste_split_v1/manifest.json
+```
+
+The split builder requires the pinned `datasets` and Open-Assistant installs,
+because it loads the local Hub snapshots and applies the same
+`_filter_by_words` rule as the Coste loader. Its manifest hash and all explicit
+membership-ID files are run inputs. The generated `data/processed/` directory
+is ignored by Git and must be retained on shared storage or regenerated from
+the identical pinned inputs and config.
+
 The proxy path in `configs/config_rl.yaml` is not a released checkpoint. Train seed 1 from the pinned 70M SFT base using the legacy RM command, then record:
 
 - resolved data manifest hash and row IDs;
@@ -129,10 +144,9 @@ The opt-in profile changes only scale and skips the separate gold phase:
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual baseline_smoke \
+  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 baseline_smoke \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1 \
-  --rl_dataset_path_override assets/alpaca_farm_prompt_dataset
+  --proxy_rm_path_override models/rm-pythia-44m_seed1
 ```
 
 It selects `configs/ppo_config_smoke.yaml`: two rollouts in one chunk, batch two, one PPO epoch, one optimizer update, two eval prompts, rollout generation capped at 16 new tokens, and a dedicated checkpoint directory. Two samples avoid the legacy trlx singleton-variance/`RunningMoments` NaN. The trainer’s evaluation path hard-codes up to 256 new tokens, so the 16-token cap does not apply to its initial and post-update evaluation. The smoke still uses the real 1.4B policy and locally trained proxy RM, so it is a setup/integration check—not a CPU unit test and not scientific evidence. `run_gold_evaluation=false` prevents a licensed 7B gold model from being loaded in the training process. Run offline gold scoring later, in a separate process, only after the scorer path is corrected and validated.
