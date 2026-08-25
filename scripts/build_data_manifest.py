@@ -313,6 +313,94 @@ def _verify_local_asset(asset: dict[str, Any], path: Path) -> None:
         raise SplitBuildError(f"Local asset verification failed for {asset['name']}:\n{detail}")
 
 
+def _resolve_split_data_files(
+    asset: Mapping[str, Any],
+    asset_root: Path,
+    configured_files: Any,
+    split_names: Iterable[str],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Resolve only manifest-verified files declared for each source split."""
+
+    if not isinstance(configured_files, Mapping):
+        raise SplitBuildError(f"{asset['name']} data_files must be a split-to-files mapping")
+
+    verified_paths = {
+        Path(required_file["path"]).as_posix()
+        for required_file in asset.get("required_files", [])
+    }
+    root = asset_root.resolve()
+    resolved: dict[str, list[str]] = {}
+    provenance: dict[str, list[str]] = {}
+    seen_paths: set[Path] = set()
+    for split in split_names:
+        entries = configured_files.get(split)
+        if isinstance(entries, str):
+            entries = [entries]
+        if not isinstance(entries, list) or not entries:
+            raise SplitBuildError(f"{asset['name']} data_files.{split} must be a non-empty list")
+
+        local_paths: list[str] = []
+        relative_paths: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, str) or not entry:
+                raise SplitBuildError(
+                    f"{asset['name']} data_files.{split} contains an invalid path: {entry!r}"
+                )
+            relative = Path(entry)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise SplitBuildError(
+                    f"{asset['name']} data_files.{split} contains an unsafe path: {entry}"
+                )
+            relative_posix = relative.as_posix()
+            if relative_posix not in verified_paths:
+                raise SplitBuildError(
+                    f"{asset['name']} data_files.{split} is not in the verified source manifest: "
+                    f"{relative_posix}"
+                )
+            local_path = (root / relative).resolve()
+            if not local_path.is_relative_to(root) or not local_path.is_file():
+                raise SplitBuildError(
+                    f"{asset['name']} data_files.{split} does not exist under the asset root: "
+                    f"{relative_posix}"
+                )
+            if local_path in seen_paths:
+                raise SplitBuildError(
+                    f"{asset['name']} data file is assigned more than once: {relative_posix}"
+                )
+            seen_paths.add(local_path)
+            local_paths.append(str(local_path))
+            relative_paths.append(relative_posix)
+
+        resolved[split] = local_paths
+        provenance[split] = relative_paths
+    return resolved, provenance
+
+
+def _validate_expected_source_counts(
+    source_config: Mapping[str, Any],
+    rows_by_split: Mapping[str, list[dict]],
+    *,
+    asset_name: str,
+) -> None:
+    expected = source_config.get("expected_source_counts")
+    if expected is None:
+        return
+    if not isinstance(expected, Mapping):
+        raise SplitBuildError(f"{asset_name} expected_source_counts must be a mapping")
+    for split, rows in rows_by_split.items():
+        expected_count = expected.get(split)
+        if type(expected_count) is not int or expected_count < 0:
+            raise SplitBuildError(
+                f"{asset_name} expected_source_counts.{split} must be a non-negative integer"
+            )
+        if len(rows) != expected_count:
+            raise SplitBuildError(
+                f"{asset_name}/{split} row-count mismatch: expected {expected_count}, "
+                f"found {len(rows)}. Check the pinned revision and explicit data_files; "
+                "do not continue with duplicated or unrelated JSON files."
+            )
+
+
 def _filter_ppo_rows(rows: Iterable[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     try:
         from model_training.custom_datasets.utils import _filter_by_words
@@ -353,18 +441,52 @@ def _load_source_rows(config: dict[str, Any]) -> tuple[dict[str, list[dict]], di
         preference_config["allocation_source_split"],
         *preference_config["preserved_splits"].values(),
     ]
-    preference_loaded = load_dataset(str(preference_path), split=preference_split_names)
+    preference_data_files, preference_file_provenance = _resolve_split_data_files(
+        preference_asset,
+        preference_path,
+        preference_config.get("data_files"),
+        preference_split_names,
+    )
+    preference_loaded = load_dataset(
+        "json",
+        data_files=preference_data_files,
+        split=preference_split_names,
+    )
     preference_rows = {
         split: [dict(row) for row in dataset]
         for split, dataset in zip(preference_split_names, preference_loaded)
     }
+    _validate_expected_source_counts(
+        preference_config,
+        preference_rows,
+        asset_name=preference_asset["name"],
+    )
 
-    ppo_loaded = load_dataset(str(ppo_path), ppo_config["dataset_config"])
     ppo_split_names = [ppo_config["allocation_source_split"], *ppo_config["preserved_splits"].values()]
+    ppo_data_files, ppo_file_provenance = _resolve_split_data_files(
+        ppo_asset,
+        ppo_path,
+        ppo_config.get("data_files"),
+        ppo_split_names,
+    )
+    ppo_loaded = load_dataset(
+        "json",
+        data_files=ppo_data_files,
+        split=ppo_split_names,
+    )
+    ppo_raw_rows = {
+        split: [dict(row) for row in dataset]
+        for split, dataset in zip(ppo_split_names, ppo_loaded)
+    }
+    _validate_expected_source_counts(
+        ppo_config,
+        ppo_raw_rows,
+        asset_name=ppo_asset["name"],
+    )
     ppo_rows: dict[str, list[dict]] = {}
     ppo_rejections: dict[str, int] = {}
     for split in ppo_split_names:
-        filtered, rejected = _filter_ppo_rows(ppo_loaded[split])
+        filtered, rejected = _filter_ppo_rows(ppo_raw_rows[split])
         ppo_rows[split] = filtered
         ppo_rejections[split] = rejected
 
@@ -378,6 +500,7 @@ def _load_source_rows(config: dict[str, Any]) -> tuple[dict[str, list[dict]], di
                 "name": preference_asset["name"],
                 "repo_id": preference_asset["repo_id"],
                 "revision": preference_asset["revision"],
+                "data_files": preference_file_provenance,
                 "source_counts": {split: len(rows) for split, rows in preference_rows.items()},
                 "filter": "none",
             },
@@ -386,6 +509,10 @@ def _load_source_rows(config: dict[str, Any]) -> tuple[dict[str, list[dict]], di
                 "repo_id": ppo_asset["repo_id"],
                 "revision": ppo_asset["revision"],
                 "dataset_config": ppo_config["dataset_config"],
+                "data_files": ppo_file_provenance,
+                "source_counts_before_legacy_filter": {
+                    split: len(rows) for split, rows in ppo_raw_rows.items()
+                },
                 "source_counts_after_legacy_filter": {
                     split: len(rows) for split, rows in ppo_rows.items()
                 },

@@ -7,6 +7,9 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 from scripts.build_data_manifest import (
+    SplitBuildError,
+    _resolve_split_data_files,
+    _validate_expected_source_counts,
     allocate_grouped_records,
     annotate_source_records,
     compute_target_counts,
@@ -61,6 +64,86 @@ def _annotate(rows: list[dict], kind: str, source_split: str) -> list[dict]:
 
 
 class DataSplitPipelineTests(unittest.TestCase):
+    def test_coste_config_freezes_exact_source_files_and_counts(self) -> None:
+        config_text = (ROOT / "configs/data_split_coste_v1.yaml").read_text(encoding="utf-8")
+        for expected in (
+            "train/human_pref.json",
+            "train/sft.json",
+            "train/synth_pref.json",
+            "train/unlabelled.json",
+            "validation/val.json",
+            "alpaca_instructions/unlabeled.json",
+            "alpaca_instructions/val.json",
+            "train: 49383",
+            "unlabeled: 20000",
+        ):
+            self.assertIn(expected, config_text)
+
+        builder_text = (ROOT / "scripts/build_data_manifest.py").read_text(encoding="utf-8")
+        self.assertIn('load_dataset(\n        "json",', builder_text)
+        self.assertNotIn("load_dataset(str(preference_path)", builder_text)
+        self.assertNotIn("load_dataset(str(ppo_path)", builder_text)
+
+    def test_source_files_are_explicit_verified_and_not_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("train/a.json", "train/b.json", "validation/val.json"):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("[]\n", encoding="utf-8")
+
+            source_asset = {
+                "name": "synthetic_preference",
+                "required_files": [
+                    {"path": "train/a.json"},
+                    {"path": "train/b.json"},
+                    {"path": "validation/val.json"},
+                ],
+            }
+            resolved, provenance = _resolve_split_data_files(
+                source_asset,
+                root,
+                {
+                    "train": ["train/a.json", "train/b.json"],
+                    "validation": ["validation/val.json"],
+                },
+                ["train", "validation"],
+            )
+            self.assertEqual(provenance["train"], ["train/a.json", "train/b.json"])
+            self.assertEqual(resolved["validation"], [str((root / "validation/val.json").resolve())])
+
+            with self.assertRaisesRegex(SplitBuildError, "not in the verified source manifest"):
+                _resolve_split_data_files(
+                    source_asset,
+                    root,
+                    {"train": ["train/unverified.json"]},
+                    ["train"],
+                )
+            with self.assertRaisesRegex(SplitBuildError, "assigned more than once"):
+                _resolve_split_data_files(
+                    source_asset,
+                    root,
+                    {
+                        "train": ["train/a.json"],
+                        "validation": ["train/a.json"],
+                    },
+                    ["train", "validation"],
+                )
+
+    def test_expected_source_counts_reject_recursive_discovery_duplicates(self) -> None:
+        source_config = {"expected_source_counts": {"train": 2, "validation": 1}}
+        _validate_expected_source_counts(
+            source_config,
+            {"train": [{}, {}], "validation": [{}]},
+            asset_name="synthetic_preference",
+        )
+        with self.assertRaisesRegex(SplitBuildError, "row-count mismatch"):
+            _validate_expected_source_counts(
+                source_config,
+                {"train": [{}, {}, {}, {}], "validation": [{}]},
+                asset_name="synthetic_preference",
+            )
+
     def test_frozen_source_pool_quotas(self) -> None:
         self.assertEqual(
             compute_target_counts(

@@ -142,6 +142,12 @@ resolves through `~/.local`, source the storage helper and rerun the runtime
 transaction; `pathtools==0.1.2` is now an explicit requirement for pinned
 `wandb==0.15.8`.
 
+If `build_data_manifest.py` reports `Invalid pattern: '**' can only be an
+entire path component`, the legacy `datasets==2.14.4` install resolved an
+incompatible newer `fsspec`. The runtime requirements now pin
+`fsspec[http]==2023.9.2`; rerun the runtime transaction above rather than
+upgrading `datasets` or the legacy trainer stack.
+
 To repair an already-created `rlhf-cuq` environment after either observed
 failure, do not recreate it. From the repository root run:
 
@@ -194,7 +200,9 @@ The Hub supports revision-pinned full-repository downloads and local directories
 ### Build and verify the controlled data split
 
 Materialize the logical roles once, before training any RM. The builder verifies
-the pinned source payloads, creates content-derived record/prompt IDs, keeps
+the pinned source payloads, loads only the exact JSON files declared in the
+split config, validates their raw row counts, creates content-derived
+record/prompt IDs, keeps
 duplicate prompts in one role, uses deterministic hash assignment with exact
 largest-remainder quotas, audits overlap, and writes SHA-256-protected JSONL and
 ID files. It never overwrites an existing split bundle.
@@ -220,6 +228,11 @@ The original preference `validation` and AlpacaFarm `val` splits are retained
 as `D_rm_external_val` and `D_rl_external_val`; they are not mixed into the
 percentages. The generated manifest is authoritative if a pinned legacy content
 filter rejects any PPO source row. Archive its hash with every run.
+
+Do not replace the explicit `data_files` entries with a snapshot-directory
+load. A Hub snapshot contains several JSON datasets/configurations. Recursive
+discovery can duplicate the Coste preference rows and can combine AlpacaFarm
+instruction data with evaluation JSON that has extra metadata columns.
 
 The RM adapter exposes only `D_rm_train` and `D_rm_val`; the PPO adapter exposes
 only `D_rl_train_prompts` and `D_rl_val_prompts`. `D_cal`, test, and external

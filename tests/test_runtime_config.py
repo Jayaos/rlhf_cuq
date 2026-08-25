@@ -141,7 +141,9 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertIn("pathtools==0.1.2", runtime_text)
         self.assertIn("threadpoolctl>=3.1.0", runtime_text)
+        self.assertIn("fsspec[http]==2023.9.2", runtime_text)
         for constraints in (conda_constraints, wheel_constraints):
+            self.assertIn("fsspec==2023.9.2", constraints)
             self.assertIn("pathtools==0.1.2", constraints)
             self.assertIn("pytest==7.4.0", constraints)
         self.assertLess(

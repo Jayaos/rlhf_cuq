@@ -14,6 +14,7 @@ evaluate>=0.4.0
 fastlangid>=1.0.11
 fire
 flash_attn>=2.0.0
+fsspec[http]==2023.9.2
 gdown
 langcodes==3.3.0
 loguru==0.6.0

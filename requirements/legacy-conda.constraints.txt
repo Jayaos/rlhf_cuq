@@ -9,6 +9,7 @@ cmake==3.25.0
 datasets==2.14.4
 deepspeed==0.10.1
 flash-attn==2.0.8
+fsspec==2023.9.2
 huggingface-hub==0.16.4
 lit==15.0.7
 ninja==1.11.1
