@@ -62,8 +62,11 @@ Gold is not supplied to `trlx.train` or the online callback. In the original ent
 
 The trace above describes the unchanged legacy data route. The controlled
 `coste_split_v1` route instead materializes content-derived IDs and immutable
-membership files before training. Its RM wrapper supplies only `D_rm_train`
-and `D_rm_val`; the optional PPO branch supplies only
+membership files before training. It reads only the exact revision-verified
+JSON files declared for each source split and validates their raw counts;
+loading a whole snapshot directory is unsafe because generic discovery can
+duplicate Coste rows and mix unrelated AlpacaFarm schemas. Its RM wrapper
+supplies only `D_rm_train` and `D_rm_val`; the optional PPO branch supplies only
 `D_rl_train_prompts` and `D_rl_val_prompts`. Calibration/test/external roles
 remain outside those trainers. Leaving `data_split_manifest_path` empty still
 selects the original Coste loader for a separately labeled legacy baseline.

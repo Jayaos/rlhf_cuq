@@ -100,11 +100,19 @@ not research-code failures:
   disabling the user site then exposed missing `pathtools` required by W&B;
 - bare pytest collected upstream suites from editable checkouts under `src/`,
   while `python -m pytest -q tests` passed all 37 repository tests.
+- `datasets==2.14.4` initially resolved a newer `fsspec`; local dataset
+  discovery then failed on the stricter `**` glob validation. Pinning
+  `fsspec==2023.9.2` preserves the legacy Datasets stack.
+- after that dependency repair, passing entire dataset snapshot directories to
+  `load_dataset` recursively discovered unrelated JSON files: Coste source rows
+  were duplicated, and AlpacaFarm evaluation metadata conflicted with the
+  three-column instruction schema. The controlled split builder now loads only
+  config-declared, source-manifest-verified JSON paths and checks raw counts.
 
 The checked-in repair is deliberately narrow: `legacy-build.txt` installs
 `cmake==3.25.0`, `lit==15.0.7`, and `pybind11==2.11.1` before native runtime
 packages; the runtime explicitly requests `pathtools==0.1.2` and a compatible
-`threadpoolctl`; the Conda environment includes pytest; and
+`threadpoolctl`, pins `fsspec==2023.9.2`; the Conda environment includes pytest; and
 `configure_cluster_storage.sh` makes cache placement and Python isolation
 explicit. This records observed compatibility work and does not change PPO/RM
 mathematics. Phoenix has now passed `pip check`, required imports, the scoped
@@ -159,8 +167,8 @@ sha256sum data/processed/coste_split_v1/manifest.json
 ```
 
 The split builder requires the pinned `datasets` and Open-Assistant installs,
-because it loads the local Hub snapshots and applies the same
-`_filter_by_words` rule as the Coste loader. Its manifest hash and all explicit
+because it loads explicit verified JSON files from the local Hub snapshots and
+applies the same `_filter_by_words` rule as the Coste loader. Its manifest hash and all explicit
 membership-ID files are run inputs. The generated `data/processed/` directory
 is ignored by Git and must be retained on shared storage or regenerated from
 the identical pinned inputs and config.

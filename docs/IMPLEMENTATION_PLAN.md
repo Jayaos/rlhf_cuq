@@ -38,6 +38,14 @@ library tests cover exact quota rounding, order independence, prompt grouping,
 disjointness, data/ID hashes, tamper failure, and trainer role isolation. A
 real-asset build and GPU trainer smoke remain target-host acceptance work.
 
+The first Phoenix real-asset attempt exposed two loader compatibility defects
+before any bundle was written. The legacy environment now pins
+`fsspec==2023.9.2`, and the builder no longer passes whole snapshot directories
+to generic dataset discovery. Exact verified JSON paths and expected raw counts
+are frozen in `configs/data_split_coste_v1.yaml`; regression tests reject an
+unverified/reused file or duplicated row pool. A successful post-fix real-asset
+build and manifest verification remain the acceptance evidence.
+
 | Planned path | Existing component reused | Responsibility | Inputs → outputs | Equation | Required test | Expected cost | Baseline behavior |
 |---|---|---|---|---|---|---|---|
 | `scripts/build_data_manifest.py` | Coste preference loader; AlpacaFarm prompt loader | **IMPLEMENTED:** materialize revision-pinned, stable, disjoint IDs for RM train/val/calibration and RL train/val/test | Pinned dataset snapshots + seed/split policy → JSONL manifests + hashes | None | CPU synthetic tests pass; real pinned-payload build pending on cluster | O(dataset rows), materialized in host memory | Changes data selection from implicit first-N; required controlled adaptation |
