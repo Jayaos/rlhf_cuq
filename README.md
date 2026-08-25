@@ -230,6 +230,15 @@ as `D_rm_external_val` and `D_rl_external_val`; they are not mixed into the
 percentages. The generated manifest is authoritative if a pinned legacy content
 filter rejects any PPO source row. Archive its hash with every run.
 
+The Coste preference pairs were generated on the same AlpacaFarm prompt
+partitions used by PPO. Therefore, `coste_split_v1` explicitly allows and
+reports prompt-ID overlap **across** the preference and PPO source families.
+Within-family isolation remains strict: RM train/validation/calibration cannot
+share prompts with one another, and PPO train/validation/test cannot share
+prompts with one another. `D_rl_test_prompts` is held out from PPO training and
+selection, but it is not a globally prompt-novel RM test. A globally
+prompt-exclusive protocol must be run as a separately named experiment.
+
 Do not replace the explicit `data_files` entries with a snapshot-directory
 load. A Hub snapshot contains several JSON datasets/configurations. Recursive
 discovery can duplicate the Coste preference rows and can combine AlpacaFarm

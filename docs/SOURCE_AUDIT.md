@@ -78,6 +78,15 @@ duplicate ordinal, groups them by the same prompt ID, and records repeated
 occurrence counts in the generated manifest. It does not silently deduplicate
 or allow the copies to cross logical roles.
 
+The Phoenix build then observed 21,992 prompt IDs shared between the verified
+preference and PPO source families. This is expected: Coste's response pairs
+were generated on the AlpacaFarm prompt partitions later used for PPO. The
+Coste-native policy is therefore `allow_coste_native_and_report`, with exact
+overlap totals and an RM-role/PPO-role matrix embedded in every generated
+manifest. Within-RM and within-PPO prompt separation remains mandatory. This
+means the PPO test role is PPO-heldout, not globally prompt-heldout from the RM;
+a globally exclusive prompt experiment requires a separate protocol.
+
 ## Effective batch and step semantics
 
 For the checked config, process count `W=1`, `num_rollouts R=4`, `chunk_size C=2`, requested train batch `T=32`, and `ppo_epochs=4`.

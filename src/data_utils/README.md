@@ -21,6 +21,10 @@ python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml 
 This independently partitions the Coste preference `train` pool into
 `D_rm_train`/`D_rm_val`/`D_cal` at 90/5/5 and the AlpacaFarm `unlabeled` pool
 into `D_rl_train_prompts`/`D_rl_val_prompts`/`D_rl_test_prompts` at 80/10/10.
+The Coste-native manifest allows prompt reuse across the preference and PPO
+source families because both assets use the same AlpacaFarm prompt universe;
+it reports this overlap by role pair. Prompt and record membership remains
+strictly disjoint within the three RM roles and within the three PPO roles.
 The original source validation splits are preserved as external validation.
 Membership is based on content-derived IDs and a frozen hash seed, duplicate
 prompts remain grouped, and every data/ID file is checked against the generated

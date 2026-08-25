@@ -114,6 +114,16 @@ Keep historical `policy/kl` under an explicit legacy name. Add a new field for r
 
 Owner decision on 2026-08-24: keep the two Coste source datasets separate. Hash-partition the pinned preference dataset's original `train` pool as 90% `D_rm_train`, 5% `D_rm_val`, and 5% `D_cal`. Hash-partition AlpacaFarm's pinned `unlabeled` pool as 80% `D_rl_train_prompts`, 10% `D_rl_val_prompts`, and 10% `D_rl_test_prompts`. Preserve each source's original validation split as an external evaluation split rather than moving it into training.
 
+Coste-native overlap resolution on 2026-08-25: the two source datasets share
+their underlying AlpacaFarm prompt universe by construction. The primary
+`coste_split_v1` track permits this cross-source prompt reuse and records total
+and RM-role/PPO-role overlap counts in the split manifest. Disjointness remains
+mandatory within RM roles and within PPO roles. Consequently,
+`D_rl_test_prompts` is held out from PPO training/model selection, but is not a
+globally prompt-novel test relative to proxy-RM fitting. Any globally
+prompt-exclusive variant is a separate named protocol and must not be pooled
+with Coste-native results.
+
 Implementation requirements are frozen as deterministic content-derived record/prompt IDs, seed `coste-split-v1-2026-08-24`, largest-remainder exact quotas, prompt-group assignment, strict within-track disjointness, a cross-source prompt-overlap audit, identical manifests across methods/seeds, and local payload/ID hashes. This resolves allocation only; it does not resolve any conformal equation in Section 12 of `AGENTS.md`.
 
 ## Decision-record template

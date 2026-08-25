@@ -101,6 +101,7 @@ class DataSplitPipelineTests(unittest.TestCase):
             "alpaca_instructions/val.json",
             "train: 49383",
             "unlabeled: 20001",
+            "cross_source_prompt_overlap_policy: allow_coste_native_and_report",
         ):
             self.assertIn(expected, config_text)
 
@@ -290,6 +291,77 @@ class DataSplitPipelineTests(unittest.TestCase):
             train_path.write_text(train_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
             with self.assertRaisesRegex(SplitManifestError, "data hash mismatch"):
                 load_split_records(manifest_path, "D_rm_train", expected_kind="preference")
+
+    def test_coste_native_cross_source_prompt_overlap_is_allowed_and_audited(self) -> None:
+        preference_rows = _preference_rows(20, prefix="shared")
+        prompt_rows = [
+            {
+                "instruction": row["instruction"],
+                "input": row["input"],
+                "output": f"source output {index}",
+            }
+            for index, row in enumerate(preference_rows)
+        ]
+        rm_records = _annotate(preference_rows, "preference", "train")
+        rl_records = _annotate(prompt_rows, "prompt", "unlabeled")
+        rm_splits, rm_targets = allocate_grouped_records(
+            rm_records,
+            {"D_rm_train": 90, "D_rm_val": 5, "D_cal": 5},
+            seed="rm-overlap-seed",
+        )
+        rl_splits, rl_targets = allocate_grouped_records(
+            rl_records,
+            {
+                "D_rl_train_prompts": 80,
+                "D_rl_val_prompts": 10,
+                "D_rl_test_prompts": 10,
+            },
+            seed="rl-overlap-seed",
+        )
+        splits = {**rm_splits, **rl_splits}
+        kinds = {role: "preference" for role in rm_splits}
+        kinds.update({role: "prompt" for role in rl_splits})
+        prompt_ids = {
+            role: {record[PROMPT_ID_FIELD] for record in records}
+            for role, records in splits.items()
+        }
+        by_role_pair = {
+            rm_role: {
+                rl_role: len(prompt_ids[rm_role].intersection(prompt_ids[rl_role]))
+                for rl_role in sorted(rl_splits)
+            }
+            for rm_role in sorted(rm_splits)
+        }
+        overlap_audit = {
+            "policy": "allow_coste_native_and_report",
+            "logical_cross_source_prompt_count": 20,
+            "all_preserved_cross_source_prompt_count": 20,
+            "by_role_pair": by_role_pair,
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = write_split_bundle(
+                root / "allowed",
+                split_records=splits,
+                split_kinds=kinds,
+                split_targets={**rm_targets, **rl_targets},
+                provenance={"name": "synthetic-overlap"},
+                overlap_audit=overlap_audit,
+            )
+            self.assertEqual(sum(verify_split_manifest(manifest_path).values()), 40)
+
+            forbidden_audit = dict(overlap_audit, policy="forbid")
+            forbidden_manifest = write_split_bundle(
+                root / "forbidden",
+                split_records=splits,
+                split_kinds=kinds,
+                split_targets={**rm_targets, **rl_targets},
+                provenance={"name": "synthetic-overlap-forbidden"},
+                overlap_audit=forbidden_audit,
+            )
+            with self.assertRaisesRegex(SplitManifestError, "overlap is forbidden"):
+                verify_split_manifest(forbidden_manifest)
 
     def test_trainers_connect_only_training_and_validation_roles(self) -> None:
         loader_text = (ROOT / "src/data_utils/manifest_dataset_loader.py").read_text(

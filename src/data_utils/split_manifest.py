@@ -231,8 +231,14 @@ def verify_split_manifest(path: str | Path) -> dict[str, int]:
         for role in ("D_rl_train_prompts", "D_rl_val_prompts", "D_rl_test_prompts")
         for record in records_by_role[role]
     }
+    overlap_audit = manifest.get("overlap_audit")
+    if not isinstance(overlap_audit, dict):
+        raise SplitManifestError("Split manifest must contain an overlap_audit object")
+    overlap_policy = overlap_audit.get("policy", "forbid")
+    if overlap_policy not in {"forbid", "allow_coste_native_and_report"}:
+        raise SplitManifestError(f"Unsupported cross-source overlap policy: {overlap_policy!r}")
     actual_overlap = len(rm_prompts.intersection(rl_prompts))
-    recorded_overlap = manifest.get("overlap_audit", {}).get("logical_cross_source_prompt_count")
+    recorded_overlap = overlap_audit.get("logical_cross_source_prompt_count")
     if recorded_overlap != actual_overlap:
         raise SplitManifestError(
             f"Cross-source overlap audit mismatch: manifest={recorded_overlap}, actual={actual_overlap}"
@@ -250,12 +256,39 @@ def verify_split_manifest(path: str | Path) -> dict[str, int]:
         for record in records
     }
     actual_all_overlap = len(all_rm_prompts.intersection(all_rl_prompts))
-    recorded_all_overlap = manifest.get("overlap_audit", {}).get(
-        "all_preserved_cross_source_prompt_count"
-    )
+    recorded_all_overlap = overlap_audit.get("all_preserved_cross_source_prompt_count")
     if recorded_all_overlap != actual_all_overlap:
         raise SplitManifestError(
             "All-role cross-source overlap audit mismatch: "
             f"manifest={recorded_all_overlap}, actual={actual_all_overlap}"
         )
+    if overlap_policy == "forbid" and actual_all_overlap:
+        raise SplitManifestError(
+            f"Cross-source prompt overlap is forbidden, but found {actual_all_overlap} prompts"
+        )
+
+    preference_roles = sorted(
+        role for role, entry in manifest["splits"].items() if entry.get("kind") == "preference"
+    )
+    prompt_roles = sorted(
+        role for role, entry in manifest["splits"].items() if entry.get("kind") == "prompt"
+    )
+    prompt_ids_by_role = {
+        role: {record[PROMPT_ID_FIELD] for record in records}
+        for role, records in records_by_role.items()
+    }
+    actual_by_role_pair = {
+        preference_role: {
+            prompt_role: len(
+                prompt_ids_by_role[preference_role].intersection(prompt_ids_by_role[prompt_role])
+            )
+            for prompt_role in prompt_roles
+        }
+        for preference_role in preference_roles
+    }
+    recorded_by_role_pair = overlap_audit.get("by_role_pair")
+    if overlap_policy == "allow_coste_native_and_report" and recorded_by_role_pair is None:
+        raise SplitManifestError("Allowed cross-source overlap must include by_role_pair counts")
+    if recorded_by_role_pair is not None and recorded_by_role_pair != actual_by_role_pair:
+        raise SplitManifestError("Cross-source overlap by_role_pair audit mismatch")
     return counts

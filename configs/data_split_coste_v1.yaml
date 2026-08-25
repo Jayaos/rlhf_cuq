@@ -3,7 +3,7 @@ name: coste_split_v1
 assignment_seed: coste-split-v1-2026-08-24
 output_root: data/processed/coste_split_v1
 source_manifest: artifacts/source_manifest.json
-fail_on_cross_source_prompt_overlap: true
+cross_source_prompt_overlap_policy: allow_coste_native_and_report
 
 preference:
   asset_name: coste_preference_dataset

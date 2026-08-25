@@ -245,7 +245,7 @@ def write_split_bundle(
     split_kinds: Mapping[str, str],
     split_targets: Mapping[str, int | None],
     provenance: Mapping[str, Any],
-    overlap_audit: Mapping[str, int],
+    overlap_audit: Mapping[str, Any],
 ) -> Path:
     data_directory = output_root / "splits"
     ids_directory = output_root / "ids"
@@ -632,11 +632,35 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
         for record in records
     }
     all_overlap = all_rm_prompts.intersection(all_ppo_prompts)
-    if config.get("fail_on_cross_source_prompt_overlap", True) and all_overlap:
+    overlap_policy = config.get("cross_source_prompt_overlap_policy", "forbid")
+    if overlap_policy not in {"forbid", "allow_coste_native_and_report"}:
+        raise SplitBuildError(
+            "cross_source_prompt_overlap_policy must be 'forbid' or "
+            "'allow_coste_native_and_report'"
+        )
+    if overlap_policy == "forbid" and all_overlap:
         examples = ", ".join(sorted(all_overlap)[:5])
         raise SplitBuildError(
             f"Detected {len(all_overlap)} preference/PPO prompt overlaps; examples: {examples}"
         )
+
+    preference_roles = sorted(
+        role for role, kind in split_kinds.items() if kind == "preference"
+    )
+    ppo_roles = sorted(role for role, kind in split_kinds.items() if kind == "prompt")
+    prompt_ids_by_role = {
+        role: {record[PROMPT_ID_FIELD] for record in split_records[role]}
+        for role in split_records
+    }
+    overlap_by_role_pair = {
+        preference_role: {
+            ppo_role: len(
+                prompt_ids_by_role[preference_role].intersection(prompt_ids_by_role[ppo_role])
+            )
+            for ppo_role in ppo_roles
+        }
+        for preference_role in preference_roles
+    }
 
     provenance = {
         "name": config["name"],
@@ -660,8 +684,10 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
         },
     }
     overlap_audit = {
+        "policy": overlap_policy,
         "logical_cross_source_prompt_count": len(logical_overlap),
         "all_preserved_cross_source_prompt_count": len(all_overlap),
+        "by_role_pair": overlap_by_role_pair,
     }
 
     output_root.parent.mkdir(parents=True, exist_ok=True)
@@ -693,6 +719,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_bundle_summary(manifest_path: Path, counts: Mapping[str, int], *, built: bool) -> None:
+    prefix = "PASS built" if built else "PASS"
+    print(f"{prefix} {manifest_path}")
+    for role, count in counts.items():
+        print(f"  {role}: {count}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    overlap = manifest["overlap_audit"]
+    print(f"  cross_source_prompt_overlap_policy: {overlap.get('policy', 'forbid')}")
+    print(
+        "  logical_cross_source_prompt_count: "
+        f"{overlap['logical_cross_source_prompt_count']}"
+    )
+    print(
+        "  all_preserved_cross_source_prompt_count: "
+        f"{overlap['all_preserved_cross_source_prompt_count']}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -704,17 +748,14 @@ def main(argv: list[str] | None = None) -> int:
             else _resolve_project_path(config["output_root"])
         )
         if args.verify_only:
-            counts = verify_split_manifest(output_root / "manifest.json")
-            print(f"PASS {output_root / 'manifest.json'}")
-            for role, count in counts.items():
-                print(f"  {role}: {count}")
+            manifest_path = output_root / "manifest.json"
+            counts = verify_split_manifest(manifest_path)
+            _print_bundle_summary(manifest_path, counts, built=False)
             return 0
 
         manifest_path = build_from_config(config_path, output_root)
         counts = verify_split_manifest(manifest_path)
-        print(f"PASS built {manifest_path}")
-        for role, count in counts.items():
-            print(f"  {role}: {count}")
+        _print_bundle_summary(manifest_path, counts, built=True)
         return 0
     except (SplitBuildError, SplitManifestError, KeyError, TypeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
