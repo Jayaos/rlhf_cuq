@@ -173,6 +173,10 @@ membership-ID files are run inputs. The generated `data/processed/` directory
 is ignored by Git and must be retained on shared storage or regenerated from
 the identical pinned inputs and config.
 
+The pinned AlpacaFarm instruction files contain 20,001 raw `unlabeled` rows
+and 2,000 `val` rows. The 80/10/10 largest-remainder allocation therefore
+targets 16,001/2,000/2,000 rows before any legacy content-filter rejection.
+
 The proxy path in `configs/config_rl.yaml` is not a released checkpoint. Train seed 1 from the pinned 70M SFT base using the legacy RM command, then record:
 
 - resolved data manifest hash and row IDs;

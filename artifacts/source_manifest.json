@@ -410,6 +410,26 @@
           1
         ]
       }
+    },
+    {
+      "source_asset_name": "alpaca_farm_prompt_dataset",
+      "repo_id": "tatsu-lab/alpaca_farm",
+      "revision": "e576524ca841af3c36fd6912e68e5920430928c1",
+      "config": "alpaca_instructions",
+      "splits": {
+        "unlabeled": 20001,
+        "val": 2000
+      },
+      "total_rows": 22001,
+      "features": {
+        "instruction": "string",
+        "input": "string",
+        "output": "string"
+      },
+      "observation": {
+        "date": "2026-08-25",
+        "method": "Explicit pinned JSON files loaded on Phoenix with datasets 2.14.4; the split builder verified the source asset hashes before observing counts"
+      }
     }
   ],
   "legacy_baseline_files": [

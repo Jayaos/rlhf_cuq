@@ -220,7 +220,7 @@ For the audited source sizes, the controlled roles are:
 | Coste preference `train` (49,383) | `D_rm_train` | 90% | 44,445 |
 | Coste preference `train` | `D_rm_val` | 5% | 2,469 |
 | Coste preference `train` | `D_cal` | 5% | 2,469 |
-| AlpacaFarm `unlabeled` (20,000) | `D_rl_train_prompts` | 80% | 16,000 |
+| AlpacaFarm `unlabeled` (20,001) | `D_rl_train_prompts` | 80% | 16,001 |
 | AlpacaFarm `unlabeled` | `D_rl_val_prompts` | 10% | 2,000 |
 | AlpacaFarm `unlabeled` | `D_rl_test_prompts` | 10% | 2,000 |
 

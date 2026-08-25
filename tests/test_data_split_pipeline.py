@@ -75,7 +75,7 @@ class DataSplitPipelineTests(unittest.TestCase):
             "alpaca_instructions/unlabeled.json",
             "alpaca_instructions/val.json",
             "train: 49383",
-            "unlabeled: 20000",
+            "unlabeled: 20001",
         ):
             self.assertIn(expected, config_text)
 
@@ -154,7 +154,7 @@ class DataSplitPipelineTests(unittest.TestCase):
         )
         self.assertEqual(
             compute_target_counts(
-                20_000,
+                20_001,
                 {
                     "D_rl_train_prompts": 80,
                     "D_rl_val_prompts": 10,
@@ -162,7 +162,7 @@ class DataSplitPipelineTests(unittest.TestCase):
                 },
             ),
             {
-                "D_rl_train_prompts": 16_000,
+                "D_rl_train_prompts": 16_001,
                 "D_rl_val_prompts": 2_000,
                 "D_rl_test_prompts": 2_000,
             },

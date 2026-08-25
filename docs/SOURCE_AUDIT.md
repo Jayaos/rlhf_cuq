@@ -41,7 +41,7 @@ Exact revisions, required filenames, Git blob IDs, LFS SHA-256 values, dataset r
 | `tlc4418/pythia_1.4b_sft_policy` | `7b927d2ca0da03b81e1532a9fec1288fd4ac4d39` | No explicit Hub license metadata; Pythia/AlpacaFarm provenance does not cure the omission. |
 | `tlc4418/pythia_70m_sft` | `4f0328e68e44399767f77faaa39837e148bc6971` | No explicit Hub license metadata. This is only the base for locally training the effective 44M RM. |
 | `tlc4418/1.4b-policy_preference_data_gold_labelled` | `426ed801a0322fb15e52631cff85b17f12b4f275` | No explicit Hub license metadata; 51,383 viewer rows at audit time (49,383 train, 2,000 validation). Code must use a revision and explicit ID manifest rather than trusting counts/order. |
-| `tatsu-lab/alpaca_farm` | `e576524ca841af3c36fd6912e68e5920430928c1` | CC BY-NC 4.0; research/non-commercial restrictions apply. |
+| `tatsu-lab/alpaca_farm` | `e576524ca841af3c36fd6912e68e5920430928c1` | CC BY-NC 4.0; research/non-commercial restrictions apply. Explicit pinned JSON loading on Phoenix found 20,001 `unlabeled` and 2,000 `val` rows. |
 | `tatsu-lab/alpaca-farm-sft10k-wdiff` | `91b6ac09e67d4f65e87ecf0585f8790c2de7edbb` | Weight diff; AlpacaFarm terms plus the user-supplied LLaMA license apply. |
 | `tatsu-lab/alpaca-farm-reward-model-human-wdiff` | `363f1a5745895431849cd1c1f451bb837646c14f` | Weight diff; same compound licensing and provenance caveat. |
 

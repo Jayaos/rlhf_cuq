@@ -37,7 +37,7 @@ ppo:
     val:
       - alpaca_instructions/val.json
   expected_source_counts:
-    unlabeled: 20000
+    unlabeled: 20001
     val: 2000
   allocation_source_split: unlabeled
   allocations:
