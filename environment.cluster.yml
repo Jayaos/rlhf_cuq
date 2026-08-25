@@ -15,6 +15,9 @@ dependencies:
   - cmake=3.25.0
   - ninja=1.11.1
   - packaging=23.1
+  # fastText imports pybind11 while building. legacy-build.txt also installs
+  # the CMake/lit Python metadata required by `pip check` for Triton.
+  - pybind11=2.11.1
   - pytorch=2.0.1
   - torchvision=0.15.2
   - torchaudio=2.0.2

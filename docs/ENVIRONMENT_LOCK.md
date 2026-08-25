@@ -28,6 +28,8 @@ The constraints file selects:
 - Python 3.10 only;
 - PyTorch 2.0.1+cu118 and Triton 2.0.0;
 - Accelerate 0.22.0 and DeepSpeed 0.10.1;
+- CMake 3.25.0, lit 15.0.7, and pybind11 2.11.1 for the observed
+  Triton/fastText build contracts;
 - datasets 2.14.4, PyArrow 13.0.0, and Hugging Face Hub 0.16.4;
 - Transformers 4.31.0, Tokenizers 0.13.3, PEFT 0.2.0, and Pydantic 1.10.7, following the pinned OA package rather than trlx’s later 4.32/0.5/1.10.12 environment snapshot;
 - the remaining high-risk versions listed in `requirements/legacy-cu118.constraints.txt`.
@@ -41,6 +43,18 @@ The preferred cluster path is now the staged Conda procedure in the root
 runtime and SHA-pinned editable sources. `requirements/legacy-conda.constraints.txt`
 uses `torch==2.0.1`, matching Conda's version metadata, while the environment
 selects the CUDA 11.8 build.
+
+Before creating/installing the environment, source the checked-in storage
+helper with an absolute scratch or project cache root:
+
+```bash
+source scripts/configure_cluster_storage.sh \
+  "/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
+```
+
+It redirects pip, temporary compilation, XDG, Torch-extension, Hugging Face,
+and Conda-package caches together and rejects a home-directory root. These
+exports are per-shell and must also appear in Slurm jobs.
 
 The following virtual-environment route remains an alternative on a CUDA
 11.8-compatible Linux host:
@@ -62,6 +76,29 @@ python -c "from model_training.custom_datasets.formatting import format_pairs; f
 ```
 
 Torch is installed before the remaining runtime specifically because `flash-attn==2.0.8` imports Torch while building. Build isolation is then disabled so that build sees the pinned Torch, Ninja, CMake, and packaging tools. A CUDA toolkit/compiler compatible with the selected PyTorch build is still required. This sequence is structurally installable but remains target-host-unvalidated; its first successful resolution must be frozen completely.
+
+## Phoenix installation observations (2026-08-24/25)
+
+The first PACE Phoenix installation exposed reproducible packaging failures,
+not research-code failures:
+
+- pip initially cached native wheels under the quota-limited home directory,
+  causing `Errno 122: Disk quota exceeded` while building DeepSpeed,
+  FlashAttention, and fastText;
+- after cache pressure was relieved, DeepSpeed 0.10.1 and FlashAttention 2.0.8
+  built, while fastText failed because `pybind11` was unavailable inside the
+  no-build-isolation environment;
+- after the runtime transaction, `pip check` reported that Triton 2.0.0 lacked
+  the `cmake` and `lit` Python distributions. Conda's CMake executable alone
+  does not satisfy pip's installed-distribution metadata check.
+
+The checked-in repair is deliberately narrow: `legacy-build.txt` installs
+`cmake==3.25.0`, `lit==15.0.7`, and `pybind11==2.11.1` before native runtime
+packages; both constraint tracks carry the same pins; and
+`configure_cluster_storage.sh` makes cache placement explicit. This records
+observed compatibility work and does not change PPO/RM mathematics. The target
+environment is still candidate status until `pip check`, required imports, an
+RM run, and the PPO smoke all pass and a complete `pip freeze` is archived.
 
 Then record, before training:
 
@@ -94,7 +131,9 @@ python scripts/download_assets.py --asset-root assets
 python scripts/download_assets.py --asset-root assets --verify-only
 ```
 
-`audit_assets.py` verifies remote metadata and the vendored Coste hashes;
+`audit_assets.py` verifies remote metadata and the vendored Coste hashes. The
+legacy text fingerprints are normalized to UTF-8 LF before hashing, allowing
+Windows CRLF and Linux LF checkouts while continuing to reject source changes;
 `download_assets.py` performs the separate local payload digest check. The
 proxy path remains a locally trained/checksummed checkpoint, not a Hub
 download.

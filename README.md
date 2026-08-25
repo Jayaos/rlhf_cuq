@@ -56,16 +56,20 @@ From the repository root on a login or build node:
 ```bash
 export PROJECT_ROOT="$(pwd)"
 export SCRATCH_ROOT="/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
-export HF_HOME="$SCRATCH_ROOT/huggingface"
-export HF_DATASETS_CACHE="$SCRATCH_ROOT/huggingface/datasets"
-export PIP_CACHE_DIR="$SCRATCH_ROOT/pip-cache"
-mkdir -p "$SCRATCH_ROOT" "$HF_HOME" "$HF_DATASETS_CACHE" "$PIP_CACHE_DIR"
+source scripts/configure_cluster_storage.sh "$SCRATCH_ROOT"
+
+# This must not print a path under the quota-limited home directory.
+python -m pip cache dir
+echo "$TMPDIR"
 
 conda env create --file environment.cluster.yml
 conda activate rlhf-cuq
 export CUDA_HOME="$CONDA_PREFIX"
 export MAX_JOBS="${SLURM_CPUS_PER_TASK:-8}"
 
+python -m pip install --no-cache-dir \
+  --constraint requirements/legacy-conda.constraints.txt \
+  --requirement requirements/legacy-build.txt
 python -m pip install --no-build-isolation \
   --constraint requirements/legacy-conda.constraints.txt \
   --requirement requirements/legacy-runtime.txt
@@ -75,7 +79,21 @@ python -m pip install --no-build-isolation --no-deps --editable .
 python -m pip check
 ```
 
-`environment.cluster.yml` installs the compiled foundation first. The staged pip commands are intentional: FlashAttention must see the installed Torch/CUDA toolchain, while pinned Open Assistant must be installed editably with `--no-deps` because its wheel metadata omits imported subpackages and contains moving VCS dependencies. Conda supports creating an environment from a YAML file with `conda env create -f ...`; see the [official command reference](https://docs.conda.io/projects/conda/en/latest/commands/env/create.html).
+`environment.cluster.yml` installs the compiled foundation first. The build
+requirements step then installs Python distribution metadata for CMake and lit,
+which `triton==2.0.0` requires, and makes `pybind11` importable before fastText
+runs under `--no-build-isolation`. The staged commands are intentional:
+FlashAttention must see the installed Torch/CUDA toolchain, while pinned Open
+Assistant must be installed editably with `--no-deps` because its wheel metadata
+omits imported subpackages and contains moving VCS dependencies. Conda supports
+creating an environment from a YAML file with `conda env create -f ...`; see the
+[official command reference](https://docs.conda.io/projects/conda/en/latest/commands/env/create.html).
+
+On PACE Phoenix, a concrete cache root is
+`/storage/scratch1/<shard>/$USER/rlhf-cuq`; use the exact path printed by
+`pace-quota`. Scratch is suitable for caches and temporary builds, not the only
+copy of trained checkpoints. Source `configure_cluster_storage.sh` again in
+every new login shell and Slurm job.
 
 Validate imports on the build node:
 
@@ -83,6 +101,9 @@ Validate imports on the build node:
 python --version
 nvcc --version
 python -c "import torch; print(torch.__version__, torch.version.cuda)"
+python -c "import pybind11; print(pybind11.__version__, pybind11.get_include())"
+python -m pip show cmake lit pybind11
+python -m pip check
 python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import alpaca_farm, oasst_data, trlx"
 python -m unittest discover --start-directory tests --verbose
 python scripts/audit_assets.py --offline
@@ -96,6 +117,34 @@ python -c "import torch; print(torch.cuda.get_device_name()); print(torch.cuda.i
 ```
 
 This is a candidate legacy environment, not yet a fully resolved GPU lock. After the first successful smoke, save `python -m pip freeze --all`, `python -m torch.utils.collect_env`, the scheduler resource request, and all checkpoint checksums with the run artifacts.
+
+If fastText fails with `ModuleNotFoundError: pybind11`, the build-requirements
+step was skipped or ran in a different environment. If `pip check` says Triton
+requires CMake/lit, rerun that same build-requirements step; a Conda CMake
+executable alone does not provide the distribution metadata checked by pip. If
+wheel output mentions `$HOME/.cache/pip`, source the storage helper before
+retrying. A failed runtime install may have built wheels without installing the
+transaction, so rerun the complete runtime requirements command after fixing
+the prerequisite.
+
+To repair an already-created `rlhf-cuq` environment after either observed
+failure, do not recreate it. From the repository root run:
+
+```bash
+source scripts/configure_cluster_storage.sh \
+  "/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
+conda activate rlhf-cuq
+export CUDA_HOME="$CONDA_PREFIX"
+export MAX_JOBS="${SLURM_CPUS_PER_TASK:-4}"
+
+python -m pip install --no-cache-dir \
+  --constraint requirements/legacy-conda.constraints.txt \
+  --requirement requirements/legacy-build.txt
+python -m pip install --no-build-isolation \
+  --constraint requirements/legacy-conda.constraints.txt \
+  --requirement requirements/legacy-runtime.txt
+python -m pip check
+```
 
 ### Download and verify data/checkpoints
 
@@ -223,9 +272,9 @@ set -euo pipefail
 source "/path/to/conda/etc/profile.d/conda.sh"
 conda activate rlhf-cuq
 cd "/absolute/path/to/rlhf-cuq"
+source scripts/configure_cluster_storage.sh \
+  "/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
 export CUDA_HOME="$CONDA_PREFIX"
-export HF_HOME="/absolute/path/on/shared/scratch/$USER/rlhf-cuq/huggingface"
-export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
 accelerate launch --config_file configs/accelerate_config_simple.yaml \

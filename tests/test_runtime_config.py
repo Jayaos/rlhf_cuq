@@ -109,6 +109,49 @@ class RuntimeConfigTests(unittest.TestCase):
         runtime_text = (ROOT / "requirements" / "legacy-runtime.txt").read_text(encoding="utf-8")
         self.assertIn("typer==0.9.0", runtime_text)
 
+    def test_cluster_install_covers_observed_native_build_prerequisites(self) -> None:
+        build_text = (ROOT / "requirements" / "legacy-build.txt").read_text(
+            encoding="utf-8"
+        )
+        conda_constraints = (
+            ROOT / "requirements" / "legacy-conda.constraints.txt"
+        ).read_text(encoding="utf-8")
+        wheel_constraints = (
+            ROOT / "requirements" / "legacy-cu118.constraints.txt"
+        ).read_text(encoding="utf-8")
+        environment_text = (ROOT / "environment.cluster.yml").read_text(encoding="utf-8")
+        readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+        storage_helper = (
+            ROOT / "scripts" / "configure_cluster_storage.sh"
+        ).read_text(encoding="utf-8")
+
+        required_build_pins = (
+            "cmake==3.25.0",
+            "lit==15.0.7",
+            "pybind11==2.11.1",
+        )
+        for pin in required_build_pins:
+            self.assertIn(pin, build_text)
+            self.assertIn(pin, conda_constraints)
+            self.assertIn(pin, wheel_constraints)
+        self.assertIn("pybind11=2.11.1", environment_text)
+        self.assertLess(
+            readme_text.index("--requirement requirements/legacy-build.txt"),
+            readme_text.index("--requirement requirements/legacy-runtime.txt"),
+        )
+        self.assertIn("source scripts/configure_cluster_storage.sh", readme_text)
+        for variable in (
+            "PIP_CACHE_DIR",
+            "TMPDIR",
+            "XDG_CACHE_HOME",
+            "TORCH_EXTENSIONS_DIR",
+            "HF_HOME",
+            "HF_DATASETS_CACHE",
+            "CONDA_PKGS_DIRS",
+        ):
+            self.assertIn(f"export {variable}=", storage_helper)
+        self.assertIn('"$1" == "$HOME"', storage_helper)
+
     def test_gold_call_is_guarded_by_runtime_flag(self) -> None:
         tree = ast.parse((ROOT / "src" / "ppo" / "trainer_rl.py").read_text(encoding="utf-8"))
         all_gold_calls = [

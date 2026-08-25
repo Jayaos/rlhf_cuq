@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import unittest
 from pathlib import Path
 
+from scripts.audit_assets import fingerprint_local_file
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "artifacts" / "source_manifest.json"
-
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 class LegacySnapshotTests(unittest.TestCase):
@@ -24,14 +17,18 @@ class LegacySnapshotTests(unittest.TestCase):
         cls.manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         cls.entries = cls.manifest["legacy_baseline_files"]
 
-    def test_all_snapshot_files_match_pinned_coste_bytes(self) -> None:
+    def test_all_snapshot_files_match_pinned_coste_content(self) -> None:
         mismatches = []
         for entry in self.entries:
             path = ROOT / entry["path"]
+            if path.is_file():
+                actual_size, actual_hash = fingerprint_local_file(path, entry.get("canonicalization"))
+            else:
+                actual_size, actual_hash = None, None
             actual = {
                 "exists": path.is_file(),
-                "size": path.stat().st_size if path.is_file() else None,
-                "sha256": sha256(path) if path.is_file() else None,
+                "size": actual_size,
+                "sha256": actual_hash,
             }
             expected = {"exists": True, "size": entry["size"], "sha256": entry["sha256"]}
             if actual != expected:

@@ -2,9 +2,9 @@
 """Audit pinned research sources without downloading model or dataset payloads.
 
 The command reads ``artifacts/source_manifest.json``, verifies the vendored
-Coste baseline byte-for-byte, and (unless ``--offline`` is used) queries only
-GitHub and Hugging Face metadata APIs.  It never mutates a remote asset and it
-does not download weights or dataset rows.
+Coste baseline against its pinned content fingerprints, and (unless
+``--offline`` is used) queries only GitHub and Hugging Face metadata APIs.  It
+never mutates a remote asset and it does not download weights or dataset rows.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "artifacts" / "source_m
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 USER_AGENT = "rlhf-uq-source-audit/1.0"
+UTF8_LF_CANONICALIZATION = "utf8_lf"
 
 
 class AuditError(RuntimeError):
@@ -237,6 +238,16 @@ def validate_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             if type(size) is not int or size <= 0:
                 checks.append(_result(f"{prefix}.size", "fail", "Size must be a positive integer"))
                 baseline_failures += 1
+            canonicalization = entry.get("canonicalization")
+            if canonicalization not in {None, UTF8_LF_CANONICALIZATION}:
+                checks.append(
+                    _result(
+                        f"{prefix}.canonicalization",
+                        "fail",
+                        f"Expected {UTF8_LF_CANONICALIZATION!r} or no canonicalization",
+                    )
+                )
+                baseline_failures += 1
         if baseline_failures == 0:
             checks.append(_result("manifest.legacy_hashes", "pass", f"{len(baseline_entries)} hashes"))
     return checks
@@ -259,12 +270,24 @@ def _safe_relative_path(value: Any) -> bool:
     return not path.is_absolute() and ".." not in path.parts
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+def fingerprint_local_file(path: Path, canonicalization: str | None = None) -> tuple[int, str]:
+    """Return the manifest size and SHA-256 for a local baseline file.
+
+    ``utf8_lf`` makes text fingerprints stable across Git checkouts on Windows
+    (CRLF) and Linux (LF). It changes only line-ending bytes; all other source
+    content remains protected by the digest.
+    """
+
+    payload = path.read_bytes()
+    if canonicalization == UTF8_LF_CANONICALIZATION:
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise AuditError(f"Cannot apply utf8_lf to non-UTF-8 file: {path}") from exc
+        payload = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+    elif canonicalization is not None:
+        raise AuditError(f"Unsupported baseline canonicalization: {canonicalization!r}")
+    return len(payload), hashlib.sha256(payload).hexdigest()
 
 
 def audit_local_baseline(manifest: dict[str, Any], workspace_root: Path) -> list[dict[str, Any]]:
@@ -282,8 +305,12 @@ def audit_local_baseline(manifest: dict[str, Any], workspace_root: Path) -> list
         if not candidate.is_file():
             checks.append(_result(name, "fail", "File is missing"))
             continue
-        actual_size = candidate.stat().st_size
-        actual_hash = _sha256(candidate)
+        canonicalization = entry.get("canonicalization")
+        try:
+            actual_size, actual_hash = fingerprint_local_file(candidate, canonicalization)
+        except AuditError as exc:
+            checks.append(_result(name, "fail", str(exc)))
+            continue
         expected_size = entry.get("size")
         expected_hash = entry["sha256"]
         if actual_hash != expected_hash or (expected_size is not None and actual_size != expected_size):
@@ -296,10 +323,19 @@ def audit_local_baseline(manifest: dict[str, Any], workspace_root: Path) -> list
                     actual_sha256=actual_hash,
                     expected_size=expected_size,
                     actual_size=actual_size,
+                    canonicalization=canonicalization,
                 )
             )
         else:
-            checks.append(_result(name, "pass", actual_hash, size=actual_size))
+            checks.append(
+                _result(
+                    name,
+                    "pass",
+                    actual_hash,
+                    size=actual_size,
+                    canonicalization=canonicalization,
+                )
+            )
     return checks
 
 

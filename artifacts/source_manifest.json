@@ -415,63 +415,75 @@
   "legacy_baseline_files": [
     {
       "path": "src/reward_modeling/scoring/score.py",
-      "sha256": "79272f261ba0b6ab635d4d509a74760300fe062ba2574c550da4068f8a0f322b",
-      "size": 4776
+      "sha256": "19ebe2e9a8169f16b1298364ba19c26bce3c7c36289e63b21200de594600d2ec",
+      "size": 4634,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/reward_modeling/scoring/ppo_reward_functions.py",
-      "sha256": "df87b8b85b7a9cc8d92d39bc54c878255faa9f16508fe8cc59541b4fa083a866",
-      "size": 2177
+      "sha256": "11b7b50ba438ea05c9933cde7d6d9db46c77c48070267dec208a6eca19fa4b9c",
+      "size": 2111,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/ppo/custom_helpers.py",
-      "sha256": "870e9bb4d46125f778670eb27664bef14a1424d8d993e62a1f30e668238de5fe",
-      "size": 2995
+      "sha256": "87d72af808e9fc8d19aa908735c5b801dda98331d2038a78238343e2ab2f591a",
+      "size": 2917,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/ppo/custom_trlx_trainers/custom_accelerate_base_trainer.py",
-      "sha256": "dc6fc46818866efab483a20f591909ecdcb2cb9568756b1126a2618c8b9774c2",
-      "size": 31897
+      "sha256": "76d8850349cd09ee6fa72550d41bd203ce26489d91fbcfac354fc384d5982a0a",
+      "size": 31174,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/ppo/custom_trlx_trainers/custom_accelerate_ppo_trainer.py",
-      "sha256": "c8ec94e03074b70883d8a6f5fe0414de434e423a588973369a836dc72e8273e6",
-      "size": 27376
+      "sha256": "781c1169708e831081095e83f7e710ffaf8a2b0ba5ea06fcfe3672a38d643d99",
+      "size": 26765,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/data_utils/oa_custom_datasets/dataset_loader.py",
-      "sha256": "65dc775ee59c97d370b032783e7fb3cfe1300ad74096448385b035fa79e8a367",
-      "size": 4621
+      "sha256": "f7ec0318cede15965b4e60eeac5e4508a1aaacf6db21d0be9f5a7d75e1457413",
+      "size": 4487,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/data_utils/oa_custom_datasets/rank_datasets.py",
-      "sha256": "a1fd5aa6fe0c6eeef18e2f17463598d440ca45e5115a13b6cbd9258dff9fb299",
-      "size": 1857
+      "sha256": "63f98ef3e64ec8d095f32621825d07caf699c38936188a58be812050443baf6d",
+      "size": 1800,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/data_utils/oa_custom_datasets/get_dataset_patch.py",
-      "sha256": "5ccc16b4495fae8d82b97369e7acfc4120617d2992ae4fba1f147c8a4a29d34f",
-      "size": 2512
+      "sha256": "3f1486a06d683cad4d93791964589da147fda447972703d0804e0aac531d88ee",
+      "size": 2448,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/data_utils/rm_dataset_formatter.py",
-      "sha256": "c6725718dfc12a33cc881c2f4d675e8b6be6e6516dd6766637cb612c336068b4",
-      "size": 1440
+      "sha256": "07d50c6675ee488474e77ade16618542df609bf543b8f58318fcc2eb8fea018a",
+      "size": 1405,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "src/reward_modeling/training/trainer_rm.py",
-      "sha256": "efe72a646f7769f831653d0a8a73a31e86ee1e2977422b6fcf87aac4439293e3",
-      "size": 13114
+      "sha256": "fc717633364305eec56550296ba7e47bca76bcd22187bbfb4f41d5c7ad73f2d9",
+      "size": 12764,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "configs/config_rm.yaml",
-      "sha256": "c7ef6095b77fb3ea9c6b322e5cad42a5c7e10f9791c585d3e1978264ab59422f",
-      "size": 1849
+      "sha256": "677e7fe3dd17395a1cfede82580ef1e0756a2223a8df4ab0067ad8f8d986ce60",
+      "size": 1781,
+      "canonicalization": "utf8_lf"
     },
     {
       "path": "configs/ppo_config.yaml",
-      "sha256": "32ff5ff6742e147d8766724893271e6c9c7c23f4411757ead717c8aff45c9a69",
-      "size": 1173
+      "sha256": "c5cd5eea47c076e0c59267e128b9424c63a1ba9443b26b7d784daa929eaab633",
+      "size": 1111,
+      "canonicalization": "utf8_lf"
     }
   ],
   "source_search_results": {

@@ -85,6 +85,12 @@ class ManifestValidationTests(unittest.TestCase):
         failures = [check for check in validate_manifest(manifest) if check["status"] == "fail"]
         self.assertTrue(any("legacy_baseline_files[0]" in check["name"] for check in failures))
 
+    def test_validation_rejects_unknown_baseline_canonicalization(self) -> None:
+        manifest = minimal_manifest("baseline.py", "0" * 64, 1)
+        manifest["legacy_baseline_files"][0]["canonicalization"] = "unknown"
+        failures = [check for check in validate_manifest(manifest) if check["status"] == "fail"]
+        self.assertTrue(any(check["name"].endswith("canonicalization") for check in failures))
+
     def test_dataset_contract_must_match_a_pinned_dataset_asset(self) -> None:
         manifest = minimal_manifest("baseline.py", "0" * 64, 1)
         asset = manifest["huggingface_assets"][0]
@@ -132,6 +138,26 @@ class LocalAuditTests(unittest.TestCase):
             self.assertEqual([check["status"] for check in checks], ["pass"])
 
             target.write_bytes(payload + b"changed")
+            checks = audit_local_baseline(manifest, root)
+            self.assertEqual([check["status"] for check in checks], ["fail"])
+
+    def test_utf8_lf_fingerprint_accepts_crlf_and_detects_content_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical_payload = b"first line\nsecond line\n"
+            target = root / "baseline.py"
+            target.write_bytes(canonical_payload.replace(b"\n", b"\r\n"))
+            manifest = minimal_manifest(
+                "baseline.py",
+                hashlib.sha256(canonical_payload).hexdigest(),
+                len(canonical_payload),
+            )
+            manifest["legacy_baseline_files"][0]["canonicalization"] = "utf8_lf"
+
+            checks = audit_local_baseline(manifest, root)
+            self.assertEqual([check["status"] for check in checks], ["pass"])
+
+            target.write_bytes(b"first line\r\nchanged line\r\n")
             checks = audit_local_baseline(manifest, root)
             self.assertEqual([check["status"] for check in checks], ["fail"])
 

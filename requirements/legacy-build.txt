@@ -1,7 +1,12 @@
 # Build frontend/backend versions selected for the Python 3.10 compatibility
 # environment. Install these before using --no-build-isolation as documented.
+# cmake/lit satisfy Triton 2.0.0's Python package metadata; pybind11 must be
+# importable before fasttext executes its build backend.
 pip==23.2.1
 setuptools==68.1.2
 setuptools-scm==7.1.0
 wheel==0.41.2
 flit-core==3.9.0
+cmake==3.25.0
+lit==15.0.7
+pybind11==2.11.1
