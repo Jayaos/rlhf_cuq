@@ -442,6 +442,13 @@ class DataSplitPipelineTests(unittest.TestCase):
         self.assertNotIn('load_split_records(manifest_path, "D_cal"', loader_text)
         self.assertNotIn('load_split_records(manifest_path, "D_rl_test_prompts"', loader_text)
         self.assertIn("get_manifest_dataset(training_conf, mode=\"rl\")", ppo_text)
+        root_bootstrap = 'ROOT = Path(__file__).resolve().parents[3]'
+        self.assertIn(root_bootstrap, rm_wrapper)
+        self.assertIn("sys.path.insert(0, str(ROOT))", rm_wrapper)
+        self.assertLess(
+            rm_wrapper.index(root_bootstrap),
+            rm_wrapper.index("from src.data_utils.manifest_dataset_loader"),
+        )
         self.assertIn("legacy_trainer.get_dataset = get_manifest_dataset", rm_wrapper)
 
     def test_preserved_external_roles_are_included_in_leakage_audit(self) -> None:

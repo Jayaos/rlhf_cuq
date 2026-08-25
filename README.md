@@ -300,6 +300,12 @@ accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --rng_seed 1
 ```
 
+The manifest wrapper adds the repository root to Python's import path before
+loading the local `src` namespace; no manual `PYTHONPATH` setting or pip
+package named `src` is required. If this command reports
+`ModuleNotFoundError: No module named 'src'`, the cluster checkout predates
+this launcher fix and must be updated before retrying.
+
 Expected output: `models/rm-pythia-44m-prompt-disjoint_seed1`. Confirm that it contains model/tokenizer files and a finite saved reward normalization mean/std, then hash it:
 
 ```bash

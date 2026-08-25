@@ -34,11 +34,13 @@ The first Stage 1 unit is now implemented: the primary
 `src/data_utils/split_manifest.py`, and
 `src/data_utils/manifest_dataset_loader.py` create/verify exact logical roles
 and adapt only train/validation roles to the legacy trainers. The RM wrapper
-`trainer_rm_manifest.py` avoids altering the hash-protected Coste trainer; PPO
-selects the adapter only when `data_split_manifest_path` is nonempty. Standard-
-library tests cover exact quota rounding, order independence, prompt grouping,
-disjointness, data/ID hashes, tamper failure, and trainer role isolation. A
-real-asset build and GPU trainer smoke remain target-host acceptance work.
+`trainer_rm_manifest.py` avoids altering the hash-protected Coste trainer and
+bootstraps the repository root for direct path-based `accelerate launch` use;
+PPO selects the adapter only when `data_split_manifest_path` is nonempty.
+Standard-library tests cover exact quota rounding, order independence, prompt
+grouping, disjointness, data/ID hashes, tamper failure, launcher import-path
+ordering, and trainer role isolation. A real-asset build and GPU trainer smoke
+remain target-host acceptance work.
 
 The first Phoenix real-asset attempt exposed two loader compatibility defects
 before any bundle was written. The legacy environment now pins
