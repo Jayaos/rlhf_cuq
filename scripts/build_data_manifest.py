@@ -32,7 +32,7 @@ from src.data_utils.split_manifest import (  # noqa: E402
 )
 
 
-DEFAULT_CONFIG = ROOT / "configs" / "data_split_coste_v1.yaml"
+DEFAULT_CONFIG = ROOT / "configs" / "data_split_prompt_disjoint_v1.yaml"
 METADATA_FIELDS = {
     DUPLICATE_ORDINAL_FIELD,
     RECORD_ID_FIELD,
@@ -540,6 +540,12 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
     seed = config.get("assignment_seed")
     if not isinstance(seed, str) or not seed:
         raise SplitBuildError("assignment_seed must be a non-empty string")
+    original_validation_policy = config.get("original_validation_policy")
+    if (
+        not isinstance(original_validation_policy, str)
+        or not original_validation_policy.strip()
+    ):
+        raise SplitBuildError("original_validation_policy must be a non-empty string")
     output_root = output_override.resolve() if output_override else _resolve_project_path(config["output_root"])
     if output_root.exists():
         raise SplitBuildError(
@@ -669,7 +675,7 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
             "algorithm": "content-plus-duplicate-ordinal IDs; SHA-256 prompt-group ordering; exact largest-remainder quotas",
             "preference_allocations": dict(preference_config["allocations"]),
             "ppo_allocations": dict(ppo_config["allocations"]),
-            "original_validation_policy": "preserved as external splits",
+            "original_validation_policy": original_validation_policy,
         },
         **source_metadata,
         "split_config": {

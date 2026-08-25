@@ -1,5 +1,9 @@
-# Add this overlay after the Coste RM/PPO experiment entry. The manifest is
-# generated locally by scripts/build_data_manifest.py and is never fetched from
-# a moving Hub revision.
+# Primary controlled protocol. RM prompts are globally disjoint from every PPO
+# train/validation/test prompt.
+prompt_disjoint_data_split_v1:
+  data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+
+# Coste-native replication protocol. This deliberately retains the original
+# RM/PPO prompt overlap and must not be described as globally held out.
 coste_data_split_v1:
   data_split_manifest_path: data/processed/coste_split_v1/manifest.json

@@ -29,8 +29,8 @@ Use this section for the audited cluster workflow. The historical upstream instr
 | Proxy RM, seed 1 | Train the Coste 44M proxy RM from the pinned 70M SFT base | RM base + preference dataset | Runnable on one GPU; required before PPO |
 | Proxy RM, seeds 1--5 | Produce the five members used by the Coste ensemble | Same as above | Runnable as a job array after seed 1 passes |
 | PPO integration smoke | One optimizer update using the real 1.4B policy and one RM | Policy + prompts + trained seed-1 RM | Runnable on one GPU; setup check only |
-| Checked Coste single-RM PPO | Run the vendored `configs/ppo_config.yaml` for 3,000 steps | Same as smoke | Runnable only after the smoke gate; gold must stay off |
-| Checked Coste ensemble PPO | Run the five local RMs with the configured mean/WCO/UWO objective | Policy + prompts + five trained RMs | Mean is configured; set and record WCO/UWO fields for separate runs |
+| Checked-code single-RM PPO | Run the vendored `configs/ppo_config.yaml` on the strict split for 3,000 steps | Same as smoke | Runnable only after the smoke gate; gold must stay off |
+| Checked-code ensemble PPO | Run the five strict-split RMs with the configured mean/WCO/UWO objective | Policy + prompts + five trained RMs | Mean is configured; set and record WCO/UWO fields for separate runs |
 | Offline gold scoring | Measure reward overoptimization without exposing gold reward online | Reconstructed AlpacaFarm 7B RM | Blocked: licensed base, reconstruction pinning, and prompt formatter validation remain open |
 | AdvPO and proposed conformal methods | Section 5.1/5.2 and new uncertainty experiments | Method code and frozen equations | Not implemented yet; there is no valid launch command |
 
@@ -209,35 +209,38 @@ largest-remainder quotas, audits overlap, and writes SHA-256-protected JSONL and
 ID files. It never overwrites an existing split bundle.
 
 ```bash
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
-sha256sum data/processed/coste_split_v1/manifest.json
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml --verify-only
+sha256sum data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
 ```
 
-For the audited source sizes, the controlled roles are:
+The primary split reserves AlpacaFarm `unlabeled` exclusively for PPO. The RM
+pool uses Coste's generated preference pairs from `human_pref`, `sft`,
+`synth_pref`, and `val`; it deliberately excludes the preference
+`unlabelled.json` file derived from PPO prompts. A pinned audit found zero
+prompt-ID overlap between these source pools.
+
+For the audited source sizes, the primary controlled roles are:
 
 | Source pool | Logical role | Fraction | Rows |
 | --- | --- | ---: | ---: |
-| Coste preference `train` (49,383) | `D_rm_train` | 90% | 44,445 |
-| Coste preference `train` | `D_rm_val` | 5% | 2,469 |
-| Coste preference `train` | `D_cal` | 5% | 2,469 |
-| AlpacaFarm `unlabeled` (20,001) | `D_rl_train_prompts` | 80% | 16,001 |
-| AlpacaFarm `unlabeled` | `D_rl_val_prompts` | 10% | 2,000 |
-| AlpacaFarm `unlabeled` | `D_rl_test_prompts` | 10% | 2,000 |
+| Non-`unlabelled` Coste pairs (31,382) | `D_rm_train` | 90% | 28,244 |
+| Non-`unlabelled` Coste pairs | `D_rm_val` | 5% | 1,569 |
+| Non-`unlabelled` Coste pairs | `D_cal` | 5% | 1,569 |
+| Accepted AlpacaFarm `unlabeled` prompts (19,993) | `D_rl_train_prompts` | 80% | 15,995 |
+| Accepted AlpacaFarm `unlabeled` prompts | `D_rl_val_prompts` | 10% | 1,999 |
+| Accepted AlpacaFarm `unlabeled` prompts | `D_rl_test_prompts` | 10% | 1,999 |
 
-The original preference `validation` and AlpacaFarm `val` splits are retained
-as `D_rm_external_val` and `D_rl_external_val`; they are not mixed into the
-percentages. The generated manifest is authoritative if a pinned legacy content
-filter rejects any PPO source row. Archive its hash with every run.
+The pinned raw AlpacaFarm file has 20,001 rows; the legacy Coste/Open-Assistant
+content filter rejects eight before assignment. The two RM 5% roles together
+form the requested 10% RM validation/calibration reservation. The manifest
+enforces zero RM/PPO prompt intersection, and duplicate prompt groups cannot be
+split across roles. Archive its hash with every run.
 
-The Coste preference pairs were generated on the same AlpacaFarm prompt
-partitions used by PPO. Therefore, `coste_split_v1` explicitly allows and
-reports prompt-ID overlap **across** the preference and PPO source families.
-Within-family isolation remains strict: RM train/validation/calibration cannot
-share prompts with one another, and PPO train/validation/test cannot share
-prompts with one another. `D_rl_test_prompts` is held out from PPO training and
-selection, but it is not a globally prompt-novel RM test. A globally
-prompt-exclusive protocol must be run as a separately named experiment.
+For a Coste-native overlap replication, separately build
+`configs/data_split_coste_v1.yaml`. That manifest intentionally includes the
+Coste `train/unlabelled.json` preference pairs and permits/reports their prompt
+overlap with PPO. Do not pool its results with the strict primary protocol.
 
 Do not replace the explicit `data_files` entries with a snapshot-directory
 load. A Hub snapshot contains several JSON datasets/configurations. Recursive
@@ -253,12 +256,13 @@ validation roles cannot enter either online trainer through this adapter. The
 fixed `D_cal` is reserved for later calibration code; no conformal score or
 adaptive-update equation is selected by this pipeline.
 
-Use this manifest route for the current and future controlled experiments. For
-an exact legacy-data regression only, run the original `trainer_rm.py` with
-`rm-pythia-44m-cluster`, or omit `coste_data_split_v1` from PPO and supply
-`--rl_dataset_path_override assets/alpaca_farm_prompt_dataset`. Label those
-runs `legacy_split`; they use the original implicit first-N/source-validation
-selection and are not directly interchangeable with `coste_split_v1` results.
+Use the prompt-disjoint manifest route for current and future controlled
+experiments. For an exact legacy-data regression only, run the original
+`trainer_rm.py` with `rm-pythia-44m-cluster`, or omit the split overlay from PPO
+and supply `--rl_dataset_path_override assets/alpaca_farm_prompt_dataset`.
+Label those runs `legacy_split`; they use the original implicit
+first-N/source-validation selection and are not directly interchangeable with
+either manifest protocol.
 
 After verification, compute jobs can be network-independent:
 
@@ -296,13 +300,13 @@ accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --rng_seed 1
 ```
 
-Expected output: `models/rm-pythia-44m_seed1`. Confirm that it contains model/tokenizer files and a finite saved reward normalization mean/std, then hash it:
+Expected output: `models/rm-pythia-44m-prompt-disjoint_seed1`. Confirm that it contains model/tokenizer files and a finite saved reward normalization mean/std, then hash it:
 
 ```bash
 mkdir -p artifacts/checksums
-find models/rm-pythia-44m_seed1 -type f -print0 \
+find models/rm-pythia-44m-prompt-disjoint_seed1 -type f -print0 \
   | sort -z | xargs -0 sha256sum \
-  > artifacts/checksums/rm-pythia-44m_seed1.sha256
+  > artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed1.sha256
 ```
 
 Only after seed 1 passes, train seeds 1--5 for ensemble experiments. A generic Slurm array body is:
@@ -342,24 +346,24 @@ Request one Ampere-or-newer GPU (40 GiB is a conservative starting request), act
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 baseline_smoke \
+  --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 baseline_smoke \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1
+  --proxy_rm_path_override models/rm-pythia-44m-prompt-disjoint_seed1
 ```
 
 This uses two rollouts, one PPO epoch, one optimizer update, two evaluation prompts, and no gold load. It is an integration test, not a scientific experiment. Inspect `runs/ppo_smoke`, verify finite proxy/KL values, verify a checkpoint can be reloaded, and capture the environment before crossing Gate 1. The legacy evaluator can still generate up to 256 tokens even though smoke rollouts are capped at 16.
 
-### Experiment 3: checked Coste PPO baselines
+### Experiment 3: checked-code PPO baselines on the strict split
 
 Run the single-RM checked-code baseline only after the smoke gate:
 
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 \
+  --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 \
   --run_gold_evaluation false \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1
+  --proxy_rm_path_override models/rm-pythia-44m-prompt-disjoint_seed1
 ```
 
 This selects `configs/ppo_config.yaml` (3,000 steps, four rollouts, chunk size two, four PPO epochs, KL coefficient 0.1). Do not describe it as a faithful paper reproduction. The legacy DeepSpeed launcher remains unvalidated because its `auto` batch fields are not wired cleanly through the custom trainer, so the commands here deliberately use the one-process launcher.
@@ -369,12 +373,18 @@ After all five RM directories exist, the configured ensemble-mean run is:
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_ensemble coste_data_split_v1 \
+  --configs defaults defaults_rlhf pythia_rlhf_ensemble prompt_disjoint_data_split_v1 \
   --run_gold_evaluation false \
   --policy_model_path_override assets/initial_sft_policy
 ```
 
-`pythia_rlhf_ensemble` reads `models/rm-pythia-44m_seed1` through `seed5` and currently has `objective_name: mean`. WCO and UWO are separate Coste baseline experiments: create and archive separate config entries with `objective_name: WCO` or `UWO`, and set/record `uwo_weight` for UWO, before submitting each run. Do not use `--proxy_rm_path_override` for an ensemble; that override intentionally accepts only one RM.
+`pythia_rlhf_ensemble` reads
+`models/rm-pythia-44m-prompt-disjoint_seed1` through `seed5` and currently has
+`objective_name: mean`. WCO and UWO are separate Coste baseline experiments:
+create and archive separate config entries with `objective_name: WCO` or `UWO`,
+and set/record `uwo_weight` for UWO, before submitting each run. Do not use
+`--proxy_rm_path_override` for an ensemble; that override intentionally accepts
+only one RM.
 
 Keep gold scoring in a later, separate GPU process. Once its blockers are resolved, the entry point will be `python src/ppo/run_ppo_gold_eval.py --help`; until then, proxy-only curves are diagnostic and must not be reported as gold-regret results.
 

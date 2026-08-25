@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 from scripts.build_data_manifest import (
+    DEFAULT_CONFIG,
     SplitBuildError,
     _resolve_split_data_files,
     _validate_expected_source_counts,
@@ -110,6 +111,62 @@ class DataSplitPipelineTests(unittest.TestCase):
         self.assertNotIn("load_dataset(str(preference_path)", builder_text)
         self.assertNotIn("load_dataset(str(ppo_path)", builder_text)
 
+    def test_primary_config_reserves_unlabeled_prompts_exclusively_for_ppo(self) -> None:
+        config_path = ROOT / "configs/data_split_prompt_disjoint_v1.yaml"
+        config_text = config_path.read_text(encoding="utf-8")
+
+        self.assertEqual(DEFAULT_CONFIG, config_path)
+        for expected in (
+            "name: alpaca_farm_prompt_disjoint_v1",
+            "cross_source_prompt_overlap_policy: forbid",
+            "train/human_pref.json",
+            "train/sft.json",
+            "train/synth_pref.json",
+            "validation/val.json",
+            "rm_pool: 31382",
+            "alpaca_instructions/unlabeled.json",
+            "unlabeled: 20001",
+            "D_rm_train: 90",
+            "D_rm_val: 5",
+            "D_cal: 5",
+            "D_rl_train_prompts: 80",
+            "D_rl_val_prompts: 10",
+            "D_rl_test_prompts: 10",
+        ):
+            self.assertIn(expected, config_text)
+        self.assertNotIn("- train/unlabelled.json", config_text)
+        self.assertNotIn("alpaca_instructions/val.json", config_text)
+
+        data_overlay = (ROOT / "configs/config_data_split.yaml").read_text(
+            encoding="utf-8"
+        )
+        rm_overlay = (ROOT / "configs/config_rm_cluster.yaml").read_text(
+            encoding="utf-8"
+        )
+        rl_config = (ROOT / "configs/config_rl.yaml").read_text(encoding="utf-8")
+        strict_manifest = "data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json"
+        self.assertIn(
+            "prompt_disjoint_data_split_v1:\n"
+            f"  data_split_manifest_path: {strict_manifest}",
+            data_overlay,
+        )
+        self.assertIn(
+            "rm-pythia-44m-cluster-split:\n"
+            "  model_name: assets/proxy_rm_sft_base\n"
+            "  output_dir: models/rm-pythia-44m-prompt-disjoint\n"
+            f"  data_split_manifest_path: {strict_manifest}",
+            rm_overlay,
+        )
+        self.assertIn(
+            "output_dir: models/rm-pythia-44m-prompt-disjoint",
+            rm_overlay,
+        )
+        for seed in range(1, 6):
+            self.assertIn(
+                f"models/rm-pythia-44m-prompt-disjoint_seed{seed}",
+                rl_config,
+            )
+
     def test_source_files_are_explicit_verified_and_not_reused(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -171,6 +228,13 @@ class DataSplitPipelineTests(unittest.TestCase):
             )
 
     def test_frozen_source_pool_quotas(self) -> None:
+        self.assertEqual(
+            compute_target_counts(
+                31_382,
+                {"D_rm_train": 90, "D_rm_val": 5, "D_cal": 5},
+            ),
+            {"D_rm_train": 28_244, "D_rm_val": 1_569, "D_cal": 1_569},
+        )
         self.assertEqual(
             compute_target_counts(
                 49_383,

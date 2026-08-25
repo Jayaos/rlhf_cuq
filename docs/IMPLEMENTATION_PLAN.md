@@ -28,8 +28,10 @@ The smoke run itself remains pending because this host lacks the CUDA/Python 3.1
 
 The data-manifest seam is implemented; the remaining changes are planned but not yet implemented. Each behavior correction must be isolated, compared to the hash-protected snapshot, and called out in an experiment manifest.
 
-The first Stage 1 unit is now implemented: `configs/data_split_coste_v1.yaml`,
-`scripts/build_data_manifest.py`, `src/data_utils/split_manifest.py`, and
+The first Stage 1 unit is now implemented: the primary
+`configs/data_split_prompt_disjoint_v1.yaml`, retained Coste-native
+`configs/data_split_coste_v1.yaml`, `scripts/build_data_manifest.py`,
+`src/data_utils/split_manifest.py`, and
 `src/data_utils/manifest_dataset_loader.py` create/verify exact logical roles
 and adapt only train/validation roles to the legacy trainers. The RM wrapper
 `trainer_rm_manifest.py` avoids altering the hash-protected Coste trainer; PPO
@@ -42,9 +44,13 @@ The first Phoenix real-asset attempt exposed two loader compatibility defects
 before any bundle was written. The legacy environment now pins
 `fsspec==2023.9.2`, and the builder no longer passes whole snapshot directories
 to generic dataset discovery. Exact verified JSON paths and expected raw counts
-are frozen in `configs/data_split_coste_v1.yaml`; regression tests reject an
-unverified/reused file or duplicated row pool. A successful post-fix real-asset
-build and manifest verification remain the acceptance evidence.
+are frozen in the two named split configs; regression tests reject an
+unverified/reused file or duplicated row pool. The strict primary config
+excludes the Coste preference `unlabelled` pair file, includes the other three
+training files plus preference `val` in the RM pool, reserves AlpacaFarm
+`unlabeled` exclusively for PPO, and forbids every RM/PPO prompt overlap. A
+successful real-asset strict build and manifest verification remain the
+target-host acceptance evidence.
 
 | Planned path | Existing component reused | Responsibility | Inputs → outputs | Equation | Required test | Expected cost | Baseline behavior |
 |---|---|---|---|---|---|---|---|

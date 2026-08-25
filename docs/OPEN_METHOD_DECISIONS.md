@@ -114,8 +114,11 @@ Keep historical `policy/kl` under an explicit legacy name. Add a new field for r
 
 Owner decision on 2026-08-24: keep the two Coste source datasets separate. Hash-partition the pinned preference dataset's original `train` pool as 90% `D_rm_train`, 5% `D_rm_val`, and 5% `D_cal`. Hash-partition AlpacaFarm's pinned `unlabeled` pool as 80% `D_rl_train_prompts`, 10% `D_rl_val_prompts`, and 10% `D_rl_test_prompts`. Preserve each source's original validation split as an external evaluation split rather than moving it into training.
 
+Status update: this is retained only as the Coste-native overlap replication
+track. Decision R below supersedes it for the primary controlled experiment.
+
 Coste-native overlap resolution on 2026-08-25: the two source datasets share
-their underlying AlpacaFarm prompt universe by construction. The primary
+their underlying AlpacaFarm prompt universe by construction. The retained
 `coste_split_v1` track permits this cross-source prompt reuse and records total
 and RM-role/PPO-role overlap counts in the split manifest. Disjointness remains
 mandatory within RM roles and within PPO roles. Consequently,
@@ -125,6 +128,30 @@ prompt-exclusive variant is a separate named protocol and must not be pooled
 with Coste-native results.
 
 Implementation requirements are frozen as deterministic content-derived record/prompt IDs, seed `coste-split-v1-2026-08-24`, largest-remainder exact quotas, prompt-group assignment, strict within-track disjointness, a cross-source prompt-overlap audit, identical manifests across methods/seeds, and local payload/ID hashes. This resolves allocation only; it does not resolve any conformal equation in Section 12 of `AGENTS.md`.
+
+### R. Globally prompt-disjoint split (RESOLVED primary track)
+
+Owner decision on 2026-08-25: reserve the complete AlpacaFarm `unlabeled`
+source exclusively for PPO. After the legacy Coste/OA content filter, partition
+its 19,993 accepted prompts as 80% `D_rl_train_prompts`, 10%
+`D_rl_val_prompts`, and 10% `D_rl_test_prompts`.
+
+Build the RM pool from the leftover released Coste preference files:
+`train/human_pref.json`, `train/sft.json`, `train/synth_pref.json`, and
+`validation/val.json`. Do not include `train/unlabelled.json`. Partition the
+31,382 resulting pair records as 90% `D_rm_train`, 5% `D_rm_val`, and 5%
+`D_cal`. The two 5% roles implement the owner's combined 10%
+validation/calibration reservation. A pinned audit found zero prompt overlap
+between this RM pool and the excluded `unlabelled` prompt source.
+
+The primary `alpaca_farm_prompt_disjoint_v1` manifest must forbid cross-source
+prompt overlap. Deterministic content-derived record/prompt IDs, seed
+`alpaca-farm-prompt-disjoint-v1-2026-08-25`, largest-remainder exact quotas,
+prompt-group assignment, identical manifests across methods/seeds, and local
+payload/ID hashes remain mandatory. The retained `coste_split_v1` manifest is
+only a Coste-native replication track and must not be pooled with strict-track
+results. This resolves data allocation only; it does not resolve any conformal
+equation in Section 12 of `AGENTS.md`.
 
 ## Decision-record template
 

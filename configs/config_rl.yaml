@@ -33,9 +33,10 @@ baseline_smoke:
   debug: false
 
 
-# Most paremeters are based off OpenAssistant's defaults for pythia_rlhf
+# Primary prompt-disjoint single-RM track. Most parameters are based on
+# OpenAssistant's defaults for pythia_rlhf.
 pythia_rlhf_individual:
-  output_dir: runs/ppo_individual
+  output_dir: runs/ppo_individual_prompt_disjoint
   datasets:
     - alpaca_farm
 
@@ -47,7 +48,7 @@ pythia_rlhf_individual:
   rank_config:
     is_reward_model: true
     model_names: 
-      - models/rm-pythia-44m_seed1
+      - models/rm-pythia-44m-prompt-disjoint_seed1
     cache_dir: .cache
     pooling: last
     residual_dropout: 0.01
@@ -70,7 +71,7 @@ pythia_rlhf_individual:
 
 
 pythia_rlhf_ensemble:
-  output_dir: runs/ppo_ensemble
+  output_dir: runs/ppo_ensemble_prompt_disjoint
   datasets:
     - alpaca_farm
 
@@ -82,11 +83,11 @@ pythia_rlhf_ensemble:
   rank_config:
     is_reward_model: true
     model_names: 
-      - models/rm-pythia-44m_seed1
-      - models/rm-pythia-44m_seed2
-      - models/rm-pythia-44m_seed3
-      - models/rm-pythia-44m_seed4
-      - models/rm-pythia-44m_seed5
+      - models/rm-pythia-44m-prompt-disjoint_seed1
+      - models/rm-pythia-44m-prompt-disjoint_seed2
+      - models/rm-pythia-44m-prompt-disjoint_seed3
+      - models/rm-pythia-44m-prompt-disjoint_seed4
+      - models/rm-pythia-44m-prompt-disjoint_seed5
 
     objective_name: mean # Change objetive (mean, WCO, or UWO)
     uwo_weight: 0.1 # Change UWO weight (only for UWO)

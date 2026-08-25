@@ -60,10 +60,11 @@ The gold model is not a standalone download. Use the pinned AlpacaFarm recovery 
 
 Gold is not supplied to `trlx.train` or the online callback. In the original entry point it runs only after training and final save. The new smoke profile explicitly skips that separate phase; the baseline default remains enabled.
 
-The trace above describes the unchanged legacy data route. The controlled
-`coste_split_v1` route instead materializes content-derived IDs and immutable
-membership files before training. It reads only the exact revision-verified
-JSON files declared for each source split and validates their raw counts;
+The trace above describes the unchanged legacy data route. The primary
+controlled `alpaca_farm_prompt_disjoint_v1` route instead materializes
+content-derived IDs and immutable membership files before training. It reads
+only the exact revision-verified JSON files declared for each source split and
+validates their raw counts;
 loading a whole snapshot directory is unsafe because generic discovery can
 duplicate Coste rows and mix unrelated AlpacaFarm schemas. Its RM wrapper
 supplies only `D_rm_train` and `D_rm_val`; the optional PPO branch supplies only
@@ -78,14 +79,30 @@ duplicate ordinal, groups them by the same prompt ID, and records repeated
 occurrence counts in the generated manifest. It does not silently deduplicate
 or allow the copies to cross logical roles.
 
-The Phoenix build then observed 21,992 prompt IDs shared between the verified
-preference and PPO source families. This is expected: Coste's response pairs
-were generated on the AlpacaFarm prompt partitions later used for PPO. The
-Coste-native policy is therefore `allow_coste_native_and_report`, with exact
-overlap totals and an RM-role/PPO-role matrix embedded in every generated
-manifest. Within-RM and within-PPO prompt separation remains mandatory. This
-means the PPO test role is PPO-heldout, not globally prompt-heldout from the RM;
-a globally exclusive prompt experiment requires a separate protocol.
+The Phoenix Coste-native build observed 21,992 prompt IDs shared between the
+verified preference and PPO source families. This is expected: Coste's
+response pairs were generated on the AlpacaFarm prompt partitions later used
+for PPO. `coste_split_v1` therefore remains an explicitly named replication
+track with policy `allow_coste_native_and_report`; its PPO test is PPO-heldout,
+not globally prompt-heldout from the RM.
+
+Owner decision on 2026-08-25 makes the globally prompt-disjoint track primary.
+A revision-pinned per-file audit found 9,691 `human_pref`, 10,000 `sft`, 9,691
+`synth_pref`, 20,001 `unlabelled`, and 2,000 `val` preference rows. The primary
+RM pool combines every preference file except `train/unlabelled.json`, giving
+31,382 pair records over 22,846 unique prompts. Its prompt-ID intersection with
+the excluded `unlabelled` source is zero. AlpacaFarm's separate 20,001-row
+`unlabeled` prompt file is reserved exclusively for PPO; the Coste/OA content
+filter accepts 19,993 prompts. The strict manifest must therefore report zero
+cross-source overlap and uses `forbid`, not an allow-and-report exception.
+
+The strict deterministic quotas are 28,244/1,569/1,569 for RM
+train/validation/calibration and, after filtering, 15,995/1,999/1,999 for PPO
+train/validation/test. The original Coste preference `val` pairs join the RM
+pool; AlpacaFarm `val` is unused because PPO validation and test are both
+carved from `unlabeled`. All methods in the controlled comparison must use the
+same strict manifest. Results from the retained Coste-native overlap track must
+not be pooled with them.
 
 ## Effective batch and step semantics
 

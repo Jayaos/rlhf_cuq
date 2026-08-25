@@ -14,28 +14,31 @@ The research adaptation in this repository does not rely on the legacy
 first-N slices described below. After downloading the pinned snapshots, run:
 
 ```bash
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml --verify-only
 ```
 
-This independently partitions the Coste preference `train` pool into
-`D_rm_train`/`D_rm_val`/`D_cal` at 90/5/5 and the AlpacaFarm `unlabeled` pool
-into `D_rl_train_prompts`/`D_rl_val_prompts`/`D_rl_test_prompts` at 80/10/10.
-The Coste-native manifest allows prompt reuse across the preference and PPO
-source families because both assets use the same AlpacaFarm prompt universe;
-it reports this overlap by role pair. Prompt and record membership remains
-strictly disjoint within the three RM roles and within the three PPO roles.
-The original source validation splits are preserved as external validation.
+This reserves AlpacaFarm `unlabeled` exclusively for PPO and partitions its
+accepted prompts into `D_rl_train_prompts`/`D_rl_val_prompts`/
+`D_rl_test_prompts` at 80/10/10. The RM pool contains Coste preference pairs
+from `human_pref`, `sft`, `synth_pref`, and `val`, but excludes
+`train/unlabelled.json`; it is partitioned into
+`D_rm_train`/`D_rm_val`/`D_cal` at 90/5/5. The manifest forbids prompt reuse
+between every RM and PPO role as well as within each family.
 Membership is based on content-derived IDs and a frozen hash seed, duplicate
 prompts remain grouped, and every data/ID file is checked against the generated
 manifest hash.
 
 Use `src/reward_modeling/training/trainer_rm_manifest.py` for RM training and
-merge `coste_data_split_v1` into PPO `--configs`. The adapters deliberately
+merge `prompt_disjoint_data_split_v1` into PPO `--configs`. The adapters deliberately
 return only the corresponding train and validation roles. Calibration and test
 records can be read later with
 `src.data_utils.split_manifest.load_split_records`; neither is exposed to the
 online RM/PPO training entry points.
+
+`configs/data_split_coste_v1.yaml` and the `coste_data_split_v1` PPO overlay
+remain available only for a separately labeled Coste-native overlap
+replication.
 
 ## Provided AlpacaFarm-based datasets
 By impementing the right classes and wrappers, we make it very straightforward to use AlpacaFarm-based datasets for your training.

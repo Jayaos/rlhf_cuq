@@ -161,9 +161,9 @@ download.
 Before RM or PPO training, build and verify the controlled split bundle:
 
 ```bash
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml
-python scripts/build_data_manifest.py --config configs/data_split_coste_v1.yaml --verify-only
-sha256sum data/processed/coste_split_v1/manifest.json
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml
+python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml --verify-only
+sha256sum data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
 ```
 
 The split builder requires the pinned `datasets` and Open-Assistant installs,
@@ -173,9 +173,12 @@ membership-ID files are run inputs. The generated `data/processed/` directory
 is ignored by Git and must be retained on shared storage or regenerated from
 the identical pinned inputs and config.
 
-The pinned AlpacaFarm instruction files contain 20,001 raw `unlabeled` rows
-and 2,000 `val` rows. The 80/10/10 largest-remainder allocation therefore
-targets 16,001/2,000/2,000 rows before any legacy content-filter rejection.
+The strict RM pool contains 31,382 pair records and targets
+28,244/1,569/1,569 RM train/validation/calibration rows. The pinned AlpacaFarm
+file contains 20,001 raw `unlabeled` rows; the legacy content filter accepts
+19,993, so the 80/10/10 allocation produces 15,995/1,999/1,999 PPO
+train/validation/test prompts. The generated manifest, rather than the raw
+count, is authoritative for every trainer run.
 
 The proxy path in `configs/config_rl.yaml` is not a released checkpoint. Train seed 1 from the pinned 70M SFT base using the legacy RM command, then record:
 
@@ -186,7 +189,9 @@ The proxy path in `configs/config_rl.yaml` is not a released checkpoint. Train s
 - scalar-head weight and bias hashes;
 - validation results.
 
-Do not begin baseline PPO while `models/rm-pythia-44m_seed1` is merely a placeholder.
+Do not begin the strict baseline PPO while
+`models/rm-pythia-44m-prompt-disjoint_seed1` is merely a placeholder. A
+checkpoint trained under `coste_split_v1` is not interchangeable.
 
 For the gold evaluator, obtain LLaMA-7B under its original access/license terms, record its conversion tool and hashes, then use the pinned AlpacaFarm code to reconstruct pinned `sft10k` followed by pinned `reward-model-human`. The upstream command shape is:
 
@@ -207,9 +212,9 @@ The opt-in profile changes only scale and skips the separate gold phase:
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/ppo/trainer_rl.py \
-  --configs defaults defaults_rlhf pythia_rlhf_individual coste_data_split_v1 baseline_smoke \
+  --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 baseline_smoke \
   --policy_model_path_override assets/initial_sft_policy \
-  --proxy_rm_path_override models/rm-pythia-44m_seed1
+  --proxy_rm_path_override models/rm-pythia-44m-prompt-disjoint_seed1
 ```
 
 It selects `configs/ppo_config_smoke.yaml`: two rollouts in one chunk, batch two, one PPO epoch, one optimizer update, two eval prompts, rollout generation capped at 16 new tokens, and a dedicated checkpoint directory. Two samples avoid the legacy trlx singleton-variance/`RunningMoments` NaN. The trainer’s evaluation path hard-codes up to 256 new tokens, so the 16-token cap does not apply to its initial and post-update evaluation. The smoke still uses the real 1.4B policy and locally trained proxy RM, so it is a setup/integration check—not a CPU unit test and not scientific evidence. `run_gold_evaluation=false` prevents a licensed 7B gold model from being loaded in the training process. Run offline gold scoring later, in a separate process, only after the scorer path is corrected and validated.

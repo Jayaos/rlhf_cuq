@@ -1,0 +1,49 @@
+schema_version: "1.0.0"
+name: alpaca_farm_prompt_disjoint_v1
+assignment_seed: alpaca-farm-prompt-disjoint-v1-2026-08-25
+output_root: data/processed/alpaca_farm_prompt_disjoint_v1
+source_manifest: artifacts/source_manifest.json
+cross_source_prompt_overlap_policy: forbid
+original_validation_policy: >-
+  Coste preference validation joins the non-unlabeled RM pool; AlpacaFarm val
+  is unused because PPO validation and test are carved from unlabeled.
+
+# The Coste preference snapshot contains one generated pair view for each
+# AlpacaFarm source partition. Excluding train/unlabelled.json makes every RM
+# prompt disjoint from the AlpacaFarm unlabeled prompts reserved for PPO.
+preference:
+  asset_name: coste_preference_dataset
+  asset_path: assets/coste_preference_dataset
+  data_files:
+    rm_pool:
+      - train/human_pref.json
+      - train/sft.json
+      - train/synth_pref.json
+      - validation/val.json
+  expected_source_counts:
+    rm_pool: 31382
+  allocation_source_split: rm_pool
+  allocations:
+    D_rm_train: 90
+    D_rm_val: 5
+    D_cal: 5
+  preserved_splits: {}
+
+# All accepted prompts from AlpacaFarm unlabeled are assigned only to PPO.
+# The raw pinned file contains 20,001 rows; the Coste/Open-Assistant content
+# filter rejects eight rows before the deterministic 80/10/10 allocation.
+ppo:
+  asset_name: alpaca_farm_prompt_dataset
+  asset_path: assets/alpaca_farm_prompt_dataset
+  dataset_config: alpaca_instructions
+  data_files:
+    unlabeled:
+      - alpaca_instructions/unlabeled.json
+  expected_source_counts:
+    unlabeled: 20001
+  allocation_source_split: unlabeled
+  allocations:
+    D_rl_train_prompts: 80
+    D_rl_val_prompts: 10
+    D_rl_test_prompts: 10
+  preserved_splits: {}
