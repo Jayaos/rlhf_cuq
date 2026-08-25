@@ -25,6 +25,7 @@ REQUIRED_LOGICAL_SPLITS = {
 RECORD_ID_FIELD = "_split_record_id"
 PROMPT_ID_FIELD = "_split_prompt_id"
 ROLE_FIELD = "_split_role"
+DUPLICATE_ORDINAL_FIELD = "_split_duplicate_ordinal"
 
 
 class SplitManifestError(RuntimeError):

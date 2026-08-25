@@ -17,6 +17,7 @@ from scripts.build_data_manifest import (
 )
 from src.data_utils.manifest_dataset_loader import get_manifest_dataset
 from src.data_utils.split_manifest import (
+    DUPLICATE_ORDINAL_FIELD,
     PROMPT_ID_FIELD,
     RECORD_ID_FIELD,
     ROLE_FIELD,
@@ -64,6 +65,30 @@ def _annotate(rows: list[dict], kind: str, source_split: str) -> list[dict]:
 
 
 class DataSplitPipelineTests(unittest.TestCase):
+    def test_exact_duplicate_rows_keep_stable_distinct_occurrence_ids(self) -> None:
+        repeated = _preference_rows(1)[0]
+        rows = [dict(repeated), dict(repeated), *_preference_rows(1, prefix="unique")]
+
+        forward = _annotate(rows, "preference", "train")
+        reverse = _annotate(reversed(rows), "preference", "train")
+
+        self.assertEqual(len({record[RECORD_ID_FIELD] for record in forward}), 3)
+        self.assertEqual(
+            {record[RECORD_ID_FIELD] for record in forward},
+            {record[RECORD_ID_FIELD] for record in reverse},
+        )
+        repeated_records = [
+            record for record in forward if record["instruction"] == repeated["instruction"]
+        ]
+        self.assertEqual(
+            [record[DUPLICATE_ORDINAL_FIELD] for record in repeated_records],
+            [0, 1],
+        )
+        self.assertEqual(
+            len({record[PROMPT_ID_FIELD] for record in repeated_records}),
+            1,
+        )
+
     def test_coste_config_freezes_exact_source_files_and_counts(self) -> None:
         config_text = (ROOT / "configs/data_split_coste_v1.yaml").read_text(encoding="utf-8")
         for expected in (

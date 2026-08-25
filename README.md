@@ -202,7 +202,8 @@ The Hub supports revision-pinned full-repository downloads and local directories
 Materialize the logical roles once, before training any RM. The builder verifies
 the pinned source payloads, loads only the exact JSON files declared in the
 split config, validates their raw row counts, creates content-derived
-record/prompt IDs, keeps
+record/prompt IDs, preserves exact duplicate source rows with deterministic
+occurrence ordinals, keeps
 duplicate prompts in one role, uses deterministic hash assignment with exact
 largest-remainder quotas, audits overlap, and writes SHA-256-protected JSONL and
 ID files. It never overwrites an existing split bundle.
@@ -233,6 +234,9 @@ Do not replace the explicit `data_files` entries with a snapshot-directory
 load. A Hub snapshot contains several JSON datasets/configurations. Recursive
 discovery can duplicate the Coste preference rows and can combine AlpacaFarm
 instruction data with evaluation JSON that has extra metadata columns.
+Exact duplicates already present inside a verified source file are different:
+they are retained to preserve the original sample multiplicity, assigned
+distinct occurrence-qualified record IDs, and counted in manifest provenance.
 
 The RM adapter exposes only `D_rm_train` and `D_rm_val`; the PPO adapter exposes
 only `D_rl_train_prompts` and `D_rl_val_prompts`. `D_cal`, test, and external

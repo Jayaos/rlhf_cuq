@@ -71,6 +71,13 @@ supplies only `D_rm_train` and `D_rm_val`; the optional PPO branch supplies only
 remain outside those trainers. Leaving `data_split_manifest_path` empty still
 selects the original Coste loader for a separately labeled legacy baseline.
 
+The verified Coste payload also contains at least one exact repeated preference
+row. The controlled builder preserves source multiplicity for baseline
+fidelity, qualifies otherwise-identical record IDs with a deterministic
+duplicate ordinal, groups them by the same prompt ID, and records repeated
+occurrence counts in the generated manifest. It does not silently deduplicate
+or allow the copies to cross logical roles.
+
 ## Effective batch and step semantics
 
 For the checked config, process count `W=1`, `num_rollouts R=4`, `chunk_size C=2`, requested train batch `T=32`, and `ppo_epochs=4`.

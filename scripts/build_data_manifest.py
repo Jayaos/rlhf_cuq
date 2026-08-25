@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.download_assets import load_assets, verify_asset  # noqa: E402
 from src.data_utils.split_manifest import (  # noqa: E402
+    DUPLICATE_ORDINAL_FIELD,
     PROMPT_ID_FIELD,
     RECORD_ID_FIELD,
     ROLE_FIELD,
@@ -33,6 +34,7 @@ from src.data_utils.split_manifest import (  # noqa: E402
 
 DEFAULT_CONFIG = ROOT / "configs" / "data_split_coste_v1.yaml"
 METADATA_FIELDS = {
+    DUPLICATE_ORDINAL_FIELD,
     RECORD_ID_FIELD,
     PROMPT_ID_FIELD,
     ROLE_FIELD,
@@ -112,17 +114,25 @@ def annotate_source_records(
 
     records: list[dict[str, Any]] = []
     seen_record_ids: set[str] = set()
+    content_occurrences: dict[str, int] = defaultdict(int)
     for index, source_row in enumerate(rows):
         row = dict(source_row)
         _validate_source_row(row, kind, index)
         prompt_payload = {"instruction": row["instruction"], "input": row.get("input", "")}
         prompt_id = f"prompt_{sha256_bytes(canonical_json_bytes(prompt_payload))}"
-        record_payload = {
+        source_record_payload = {
             "repo_id": repo_id,
             "revision": revision,
             "source_split": source_split,
             "kind": kind,
             "row": row,
+        }
+        content_key = sha256_bytes(canonical_json_bytes(source_record_payload))
+        duplicate_ordinal = content_occurrences[content_key]
+        content_occurrences[content_key] += 1
+        record_payload = {
+            **source_record_payload,
+            "duplicate_ordinal": duplicate_ordinal,
         }
         record_id = f"{kind}_{sha256_bytes(canonical_json_bytes(record_payload))}"
         if record_id in seen_record_ids:
@@ -134,6 +144,7 @@ def annotate_source_records(
             {
                 RECORD_ID_FIELD: record_id,
                 PROMPT_ID_FIELD: prompt_id,
+                DUPLICATE_ORDINAL_FIELD: duplicate_ordinal,
                 "_split_source_asset": asset_name,
                 "_split_source_revision": revision,
                 "_split_source_split": source_split,
@@ -564,6 +575,14 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
         )
         for split, rows in source_rows["ppo"].items()
     }
+    source_metadata["source_assets"]["preference"]["exact_duplicate_occurrences"] = {
+        split: sum(record[DUPLICATE_ORDINAL_FIELD] > 0 for record in records)
+        for split, records in preference_by_source.items()
+    }
+    source_metadata["source_assets"]["ppo"]["exact_duplicate_occurrences"] = {
+        split: sum(record[DUPLICATE_ORDINAL_FIELD] > 0 for record in records)
+        for split, records in ppo_by_source.items()
+    }
 
     preference_allocated, preference_targets = allocate_grouped_records(
         preference_by_source[preference_config["allocation_source_split"]],
@@ -623,7 +642,7 @@ def build_from_config(config_path: Path, output_override: Path | None = None) ->
         "name": config["name"],
         "assignment": {
             "seed": seed,
-            "algorithm": "content IDs; SHA-256 prompt-group ordering; exact largest-remainder quotas",
+            "algorithm": "content-plus-duplicate-ordinal IDs; SHA-256 prompt-group ordering; exact largest-remainder quotas",
             "preference_allocations": dict(preference_config["allocations"]),
             "ppo_allocations": dict(ppo_config["allocations"]),
             "original_validation_policy": "preserved as external splits",
