@@ -58,9 +58,10 @@ export PROJECT_ROOT="$(pwd)"
 export SCRATCH_ROOT="/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
 source scripts/configure_cluster_storage.sh "$SCRATCH_ROOT"
 
-# This must not print a path under the quota-limited home directory.
+# These must show scratch-backed caches and disabled user-site packages.
 python -m pip cache dir
 echo "$TMPDIR"
+echo "$PYTHONNOUSERSITE"
 
 conda env create --file environment.cluster.yml
 conda activate rlhf-cuq
@@ -95,19 +96,30 @@ On PACE Phoenix, a concrete cache root is
 copy of trained checkpoints. Source `configure_cluster_storage.sh` again in
 every new login shell and Slurm job.
 
+The helper also unsets inherited `PYTHONHOME`/`PYTHONPATH` and exports
+`PYTHONNOUSERSITE=1`. This is required before the first pip transaction: a
+Phoenix trial otherwise allowed packages under `~/.local` and a stale Conda
+prefix to satisfy dependencies in the nominally clean environment.
+
 Validate imports on the build node:
 
 ```bash
 python --version
 nvcc --version
+python -c "import os, site, sys; actual=os.path.realpath(sys.prefix); expected=os.path.realpath(os.environ['CONDA_PREFIX']); assert actual == expected, (actual, expected); assert site.ENABLE_USER_SITE is False; print(sys.executable, actual, 'user_site=False')"
 python -c "import torch; print(torch.__version__, torch.version.cuda)"
 python -c "import pybind11; print(pybind11.__version__, pybind11.get_include())"
-python -m pip show cmake lit pybind11
+python -c "import pathtools, threadpoolctl; print(pathtools.__file__); print(threadpoolctl.__version__, threadpoolctl.__file__)"
+python -m pip show cmake lit pybind11 pathtools pytest threadpoolctl
 python -m pip check
-python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import alpaca_farm, oasst_data, trlx"
-python -m unittest discover --start-directory tests --verbose
+python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import alpaca_farm, oasst_data, trlx; print('All imports passed')"
+python -m pytest -q tests
 python scripts/audit_assets.py --offline
 ```
+
+Always pass `tests` to pytest. A bare `python -m pytest` also discovers test
+suites inside the editable VCS checkouts that pip places below `src/`; those
+upstream suites are not this repository's environment acceptance test.
 
 Then, inside an allocated GPU job, require this check to print a visible GPU and `True`:
 
@@ -125,7 +137,10 @@ executable alone does not provide the distribution metadata checked by pip. If
 wheel output mentions `$HOME/.cache/pip`, source the storage helper before
 retrying. A failed runtime install may have built wheels without installing the
 transaction, so rerun the complete runtime requirements command after fixing
-the prerequisite.
+the prerequisite. If `pip check` reports missing `pathtools`, or an import
+resolves through `~/.local`, source the storage helper and rerun the runtime
+transaction; `pathtools==0.1.2` is now an explicit requirement for pinned
+`wandb==0.15.8`.
 
 To repair an already-created `rlhf-cuq` environment after either observed
 failure, do not recreate it. From the repository root run:
@@ -143,8 +158,17 @@ python -m pip install --no-cache-dir \
 python -m pip install --no-build-isolation \
   --constraint requirements/legacy-conda.constraints.txt \
   --requirement requirements/legacy-runtime.txt
+python -m pip install --no-cache-dir \
+  --constraint requirements/legacy-conda.constraints.txt \
+  pytest==7.4.0
 python -m pip check
 ```
+
+On a login node without a visible GPU, the import check may make
+`bitsandbytes==0.41.1` print a CPU-library warning. The checked RM configs use
+`quantization: false` and PPO uses `adamw`, so bitsandbytes GPU functionality
+is not an installation gate for these runs. Enabling 8-bit quantization or a
+bitsandbytes optimizer would require a separate GPU-enabled validation.
 
 ### Download and verify data/checkpoints
 

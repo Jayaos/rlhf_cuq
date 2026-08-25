@@ -16,10 +16,12 @@ ninja==1.11.1
 numpy==1.25.2
 packaging==23.1
 pandas==2.0.3
+pathtools==0.1.2
 peft==0.2.0
 pyarrow==13.0.0
 pybind11==2.11.1
 pydantic==1.10.7
+pytest==7.4.0
 PyYAML==6.0.1
 safetensors==0.3.3
 tokenizers==0.13.3

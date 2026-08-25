@@ -135,6 +135,15 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertIn(pin, conda_constraints)
             self.assertIn(pin, wheel_constraints)
         self.assertIn("pybind11=2.11.1", environment_text)
+        self.assertIn("pytest=7.4.0", environment_text)
+        runtime_text = (ROOT / "requirements" / "legacy-runtime.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("pathtools==0.1.2", runtime_text)
+        self.assertIn("threadpoolctl>=3.1.0", runtime_text)
+        for constraints in (conda_constraints, wheel_constraints):
+            self.assertIn("pathtools==0.1.2", constraints)
+            self.assertIn("pytest==7.4.0", constraints)
         self.assertLess(
             readme_text.index("--requirement requirements/legacy-build.txt"),
             readme_text.index("--requirement requirements/legacy-runtime.txt"),
@@ -148,9 +157,13 @@ class RuntimeConfigTests(unittest.TestCase):
             "HF_HOME",
             "HF_DATASETS_CACHE",
             "CONDA_PKGS_DIRS",
+            "PYTHONNOUSERSITE",
         ):
             self.assertIn(f"export {variable}=", storage_helper)
+        self.assertIn("unset PYTHONHOME", storage_helper)
+        self.assertIn("unset PYTHONPATH", storage_helper)
         self.assertIn('"$1" == "$HOME"', storage_helper)
+        self.assertIn("python -m pytest -q tests", readme_text)
 
     def test_gold_call_is_guarded_by_runtime_flag(self) -> None:
         tree = ast.parse((ROOT / "src" / "ppo" / "trainer_rl.py").read_text(encoding="utf-8"))

@@ -26,6 +26,12 @@ if [[ "$1" == "/" || "$1" == "$HOME" || "$1" == "$HOME/"* ]]; then
   return 2
 fi
 
+# A clean Conda install must not resolve imports or dependency satisfaction
+# through packages inherited from ~/.local or a previously activated prefix.
+unset PYTHONHOME
+unset PYTHONPATH
+export PYTHONNOUSERSITE=1
+
 export RLHF_STORAGE_ROOT="${1%/}"
 export PIP_CACHE_DIR="$RLHF_STORAGE_ROOT/pip-cache"
 export TMPDIR="$RLHF_STORAGE_ROOT/tmp"
@@ -49,3 +55,4 @@ echo "Cluster cache/build storage configured under: $RLHF_STORAGE_ROOT"
 echo "pip cache: $PIP_CACHE_DIR"
 echo "temporary builds: $TMPDIR"
 echo "Hugging Face cache: $HF_HOME"
+echo "Python user-site packages disabled: PYTHONNOUSERSITE=$PYTHONNOUSERSITE"

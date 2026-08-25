@@ -30,6 +30,8 @@ The constraints file selects:
 - Accelerate 0.22.0 and DeepSpeed 0.10.1;
 - CMake 3.25.0, lit 15.0.7, and pybind11 2.11.1 for the observed
   Triton/fastText build contracts;
+- pathtools 0.1.2 for the pinned W&B 0.15.8 import path and pytest 7.4.0 for
+  the repository acceptance suite;
 - datasets 2.14.4, PyArrow 13.0.0, and Hugging Face Hub 0.16.4;
 - Transformers 4.31.0, Tokenizers 0.13.3, PEFT 0.2.0, and Pydantic 1.10.7, following the pinned OA package rather than trlx’s later 4.32/0.5/1.10.12 environment snapshot;
 - the remaining high-risk versions listed in `requirements/legacy-cu118.constraints.txt`.
@@ -53,8 +55,10 @@ source scripts/configure_cluster_storage.sh \
 ```
 
 It redirects pip, temporary compilation, XDG, Torch-extension, Hugging Face,
-and Conda-package caches together and rejects a home-directory root. These
-exports are per-shell and must also appear in Slurm jobs.
+and Conda-package caches together and rejects a home-directory root. It also
+unsets inherited `PYTHONHOME`/`PYTHONPATH` and sets `PYTHONNOUSERSITE=1`, so a
+clean environment cannot resolve packages from `~/.local` or a stale prefix.
+These changes are per-shell and must also appear in Slurm jobs.
 
 The following virtual-environment route remains an alternative on a CUDA
 11.8-compatible Linux host:
@@ -90,15 +94,23 @@ not research-code failures:
   no-build-isolation environment;
 - after the runtime transaction, `pip check` reported that Triton 2.0.0 lacked
   the `cmake` and `lit` Python distributions. Conda's CMake executable alone
-  does not satisfy pip's installed-distribution metadata check.
+  does not satisfy pip's installed-distribution metadata check;
+- the first validation mixed imports from home/project Conda prefixes and
+  `~/.local`; the user-site `threadpoolctl` lacked `ThreadpoolController`, and
+  disabling the user site then exposed missing `pathtools` required by W&B;
+- bare pytest collected upstream suites from editable checkouts under `src/`,
+  while `python -m pytest -q tests` passed all 37 repository tests.
 
 The checked-in repair is deliberately narrow: `legacy-build.txt` installs
 `cmake==3.25.0`, `lit==15.0.7`, and `pybind11==2.11.1` before native runtime
-packages; both constraint tracks carry the same pins; and
-`configure_cluster_storage.sh` makes cache placement explicit. This records
-observed compatibility work and does not change PPO/RM mathematics. The target
-environment is still candidate status until `pip check`, required imports, an
-RM run, and the PPO smoke all pass and a complete `pip freeze` is archived.
+packages; the runtime explicitly requests `pathtools==0.1.2` and a compatible
+`threadpoolctl`; the Conda environment includes pytest; and
+`configure_cluster_storage.sh` makes cache placement and Python isolation
+explicit. This records observed compatibility work and does not change PPO/RM
+mathematics. Phoenix has now passed `pip check`, required imports, the scoped
+37-test suite, and the offline source audit. The target environment remains
+candidate status until the GPU check, RM run, and PPO smoke pass and a complete
+`pip freeze` is archived.
 
 Then record, before training:
 

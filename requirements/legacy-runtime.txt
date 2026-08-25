@@ -1,4 +1,5 @@
-# Direct runtime requirements declared by the four pinned source packages.
+# Runtime requirements declared by the four pinned source packages, plus
+# explicit transitive compatibility requirements observed on Phoenix.
 # High-risk versions are constrained in legacy-cu118.constraints.txt. Generate
 # a complete hash lock from the first validated Linux/CUDA environment.
 accelerate>=0.21.0
@@ -23,6 +24,7 @@ nltk>=3.8.1
 numpy>=1.22.4
 openai
 pandas
+pathtools==0.1.2
 peft==0.2.0
 py7zr
 pydantic==1.10.7
@@ -33,6 +35,7 @@ scikit-learn>=1.2.0
 sentencepiece>=0.1.97
 statsmodels
 tabulate>=0.9.0
+threadpoolctl>=3.1.0
 tiktoken>=0.3.2
 tokenizers>=0.13.3
 torch>=2.0.0
