@@ -153,6 +153,7 @@ class DataSplitPipelineTests(unittest.TestCase):
         self.assertIn(
             "rm-pythia-44m-cluster-split:\n"
             "  model_name: assets/proxy_rm_sft_base\n"
+            "  model_family: pythia\n"
             "  output_dir: models/rm-pythia-44m-prompt-disjoint\n"
             f"  data_split_manifest_path: {strict_manifest}",
             rm_overlay,
@@ -449,6 +450,7 @@ class DataSplitPipelineTests(unittest.TestCase):
             rm_wrapper.index(root_bootstrap),
             rm_wrapper.index("from src.data_utils.manifest_dataset_loader"),
         )
+        self.assertIn("apply_local_model_family(parser())", rm_wrapper)
         self.assertIn("legacy_trainer.get_dataset = get_manifest_dataset", rm_wrapper)
 
     def test_preserved_external_roles_are_included_in_leakage_audit(self) -> None:

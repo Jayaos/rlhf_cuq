@@ -287,7 +287,8 @@ This does not download LLaMA-7B and does not make gold scoring ready. The pinned
 
 First train seed 1. The final overlay selects the local base model and the
 manifest-backed `D_rm_train`/`D_rm_val`; all Coste RM hyperparameters still come
-from the vendored `rm-pythia-44m` entry.
+from the vendored `rm-pythia-44m` entry. Run the training command inside a
+scheduled GPU allocation or batch job, not directly on a Phoenix login node.
 
 ```bash
 conda activate rlhf-cuq
@@ -306,6 +307,16 @@ package named `src` is required. If this command reports
 `ModuleNotFoundError: No module named 'src'`, the cluster checkout predates
 this launcher fix and must be updated before retrying.
 
+The neutral local directory name `assets/proxy_rm_sft_base` also hides the
+architecture from the pinned Open-Assistant code, which historically infers
+Pythia handling from the model-name string. The cluster overlay therefore sets
+`model_family: pythia`; the wrapper validates that the pinned local
+`config.json` declares `model_type: gpt_neox`, then delegates tokenizer and
+reward-model construction to the unchanged legacy functions. If the old
+`Cannot find any tokeniser configuration` error appears, update the checkout
+and confirm `grep -n model_family configs/config_rm_cluster.yaml` prints the
+three cluster overlays.
+
 Expected output: `models/rm-pythia-44m-prompt-disjoint_seed1`. Confirm that it contains model/tokenizer files and a finite saved reward normalization mean/std, then hash it:
 
 ```bash
@@ -315,35 +326,54 @@ find models/rm-pythia-44m-prompt-disjoint_seed1 -type f -print0 \
   > artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed1.sha256
 ```
 
-Only after seed 1 passes, train seeds 1--5 for ensemble experiments. A generic Slurm array body is:
+The repository includes a Phoenix Slurm job for this GPU step. From the
+repository root on a login node, activate the environment, use `pace-quota` to
+identify the charge account available to you, set it below, and submit seed 1:
 
 ```bash
-#!/bin/bash
-#SBATCH --job-name=rm44m
-#SBATCH --array=1-5
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=08:00:00
-
-set -euo pipefail
-source "/path/to/conda/etc/profile.d/conda.sh"
 conda activate rlhf-cuq
-cd "/absolute/path/to/rlhf-cuq"
-source scripts/configure_cluster_storage.sh \
-  "/absolute/path/on/shared/scratch/$USER/rlhf-cuq"
-export CUDA_HOME="$CONDA_PREFIX"
-export HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+cd "$PROJECT_ROOT"
+pace-quota
 
-accelerate launch --config_file configs/accelerate_config_simple.yaml \
-  src/reward_modeling/training/trainer_rm_manifest.py \
-  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
-  --rng_seed "$SLURM_ARRAY_TASK_ID"
+PACE_ACCOUNT=replace_with_your_charge_account
+sbatch --account="$PACE_ACCOUNT" scripts/slurm/train_proxy_rm.sbatch
 ```
 
-Replace the Conda, repository, account/partition, GPU, memory, and wall-time values for the local scheduler. Do not launch one multi-GPU RM job: each array element is an independent one-GPU seed.
+The checked-in job requests one A100-40GB, 8 CPUs, 64 GiB RAM, eight hours,
+and Phoenix `inferno` QOS. It derives the repository from the directory where
+`sbatch` is invoked and places caches under
+`/storage/scratch1/0/$USER/rlhf-cuq`. Override those defaults at submission
+only when needed:
+
+```bash
+sbatch --account="$PACE_ACCOUNT" \
+  --export=ALL,RLHF_PROJECT_ROOT=/absolute/repository/path,RLHF_JOB_STORAGE_ROOT=/absolute/scratch/path \
+  scripts/slurm/train_proxy_rm.sbatch
+```
+
+`sbatch` prints the job ID. Monitor the job and its combined output/error log:
+
+```bash
+squeue -u "$USER"
+tail -f slurm-rm44m-JOB_ID.out
+sacct -j JOB_ID --format=JobID,State,Elapsed,ExitCode,AllocTRES
+```
+
+The job refuses to run outside Slurm, confirms CUDA and BF16 support, verifies
+the pinned proxy base and existing split manifest offline, refuses to overwrite
+a nonempty seed output, trains the RM, and writes checkpoint hashes under
+`artifacts/checksums/`.
+
+Only after seed 1 passes, train seeds 1--5 for ensemble experiments:
+
+```bash
+sbatch --account="$PACE_ACCOUNT" --array=1-5 \
+  scripts/slurm/train_proxy_rm.sbatch
+```
+
+Do not launch one multi-GPU RM job: each array element is an independent
+one-GPU seed. Phoenix uses QOS and assigns the resource pool from the request;
+do not add an arbitrary partition copied from another cluster.
 
 ### Experiment 2: one-update PPO smoke
 

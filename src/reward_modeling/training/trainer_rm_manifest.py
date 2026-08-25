@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any, Callable
 
 
 # ``accelerate launch path/to/script.py`` exposes the script directory, not the
@@ -14,13 +15,28 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data_utils.manifest_dataset_loader import get_manifest_dataset  # noqa: E402
+from src.reward_modeling.training.local_model_compat import (  # noqa: E402
+    apply_local_model_family,
+)
 from src.reward_modeling.training import trainer_rm as legacy_trainer  # noqa: E402
+
+
+def _with_local_model_family(parser: Callable[[], Any]) -> Callable[[], Any]:
+    """Apply the validated family hint after legacy configuration parsing."""
+
+    def parse() -> Any:
+        return apply_local_model_family(parser())
+
+    return parse
 
 
 def main() -> None:
     """Delegate all model/training behavior to Coste while replacing data loading."""
 
     legacy_trainer.get_dataset = get_manifest_dataset
+    legacy_trainer.argument_parsing = _with_local_model_family(
+        legacy_trainer.argument_parsing
+    )
     legacy_trainer.main()
 
 

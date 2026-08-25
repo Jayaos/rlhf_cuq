@@ -2,22 +2,69 @@ from __future__ import annotations
 
 import ast
 import json
+import pickle
 import tempfile
 import unittest
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.ppo.runtime_config import (
     DEFAULT_PPO_CONFIG_PATH,
     apply_local_asset_overrides,
     resolve_ppo_config_path,
 )
+from src.reward_modeling.training.local_model_compat import apply_local_model_family
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    def test_local_rm_family_hint_preserves_path_and_exposes_pythia(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "proxy_rm_sft_base"
+            model.mkdir()
+            (model / "config.json").write_text(
+                json.dumps(
+                    {
+                        "architectures": ["GPTNeoXForCausalLM"],
+                        "model_type": "gpt_neox",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            conf = SimpleNamespace(
+                model_name="proxy_rm_sft_base",
+                model_family="pythia",
+            )
+
+            result = apply_local_model_family(conf, working_directory=root)
+
+            self.assertIs(result, conf)
+            self.assertEqual(str(conf.model_name), "proxy_rm_sft_base")
+            self.assertTrue("pythia" in conf.model_name)
+            self.assertFalse("gpt-neox" in conf.model_name)
+            self.assertEqual(root / Path(conf.model_name), model)
+            restored_name = pickle.loads(pickle.dumps(conf.model_name))
+            self.assertEqual(str(restored_name), "proxy_rm_sft_base")
+            self.assertTrue("pythia" in restored_name)
+
+    def test_local_rm_family_hint_rejects_wrong_model_type(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "proxy_rm_sft_base"
+            model.mkdir()
+            (model / "config.json").write_text(
+                json.dumps({"model_type": "bert"}), encoding="utf-8"
+            )
+            conf = SimpleNamespace(
+                model_name="proxy_rm_sft_base",
+                model_family="pythia",
+            )
+            with self.assertRaisesRegex(ValueError, "declares 'bert'"):
+                apply_local_model_family(conf, working_directory=root)
+
     def test_default_selects_unchanged_coste_config(self) -> None:
         selected = resolve_ppo_config_path(None, working_directory=ROOT)
         self.assertEqual(selected, (ROOT / DEFAULT_PPO_CONFIG_PATH).resolve())
@@ -166,6 +213,32 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("unset PYTHONPATH", storage_helper)
         self.assertIn('"$1" == "$HOME"', storage_helper)
         self.assertIn("python -m pytest -q tests", readme_text)
+
+    def test_proxy_rm_sbatch_requests_gpu_and_runs_manifest_trainer(self) -> None:
+        job_text = (ROOT / "scripts/slurm/train_proxy_rm.sbatch").read_text(
+            encoding="utf-8"
+        )
+        for directive in (
+            "#SBATCH --nodes=1",
+            "#SBATCH --ntasks=1",
+            "#SBATCH --gres=gpu:1",
+            "#SBATCH --constraint=A100-40GB",
+            "#SBATCH --qos=inferno",
+        ):
+            self.assertIn(directive, job_text)
+        self.assertNotIn("#SBATCH --account=", job_text)
+        self.assertIn('[[ -z "${SLURM_JOB_ID:-}" ]]', job_text)
+        self.assertIn("source scripts/configure_cluster_storage.sh", job_text)
+        self.assertIn("assert torch.cuda.is_available()", job_text)
+        self.assertIn("assert torch.cuda.is_bf16_supported()", job_text)
+        self.assertIn("--asset proxy_rm_sft_base", job_text)
+        self.assertIn("configs/data_split_prompt_disjoint_v1.yaml", job_text)
+        self.assertIn("src/reward_modeling/training/trainer_rm_manifest.py", job_text)
+        self.assertIn(
+            "--configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split",
+            job_text,
+        )
+        self.assertIn('--rng_seed "$RM_SEED"', job_text)
 
     def test_gold_call_is_guarded_by_runtime_flag(self) -> None:
         tree = ast.parse((ROOT / "src" / "ppo" / "trainer_rl.py").read_text(encoding="utf-8"))

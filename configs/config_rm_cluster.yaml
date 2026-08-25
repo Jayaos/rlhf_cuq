@@ -2,6 +2,7 @@
 # rm-pythia-44m entry so only the model and dataset locations change.
 rm-pythia-44m-cluster:
   model_name: assets/proxy_rm_sft_base
+  model_family: pythia
   datasets:
     - custom_hf_pref:
         dataset_path: assets/coste_preference_dataset
@@ -10,11 +11,13 @@ rm-pythia-44m-cluster:
 # Invoke trainer_rm_manifest.py with this overlay.
 rm-pythia-44m-cluster-split:
   model_name: assets/proxy_rm_sft_base
+  model_family: pythia
   output_dir: models/rm-pythia-44m-prompt-disjoint
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
 
 # Coste-native replication only: its RM and PPO source families share prompts.
 rm-pythia-44m-cluster-coste-native-split:
   model_name: assets/proxy_rm_sft_base
+  model_family: pythia
   output_dir: models/rm-pythia-44m-coste-native
   data_split_manifest_path: data/processed/coste_split_v1/manifest.json

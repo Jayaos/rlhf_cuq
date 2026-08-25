@@ -108,6 +108,13 @@ not research-code failures:
   were duplicated, and AlpacaFarm evaluation metadata conflicted with the
   three-column instruction schema. The controlled split builder now loads only
   config-declared, source-manifest-verified JSON paths and checks raw counts.
+- the first RM launch exposed an Open-Assistant name-based architecture check:
+  the verified local path `assets/proxy_rm_sft_base` contains neither `pythia`
+  nor `gpt-neox`, so both tokenizer selection and custom reward-model selection
+  would fail or take the wrong branch. The cluster overlays now declare
+  `model_family: pythia`; a wrapper-only adapter validates the local pinned
+  `config.json` has `model_type: gpt_neox` and supplies that name hint without
+  changing the path or the hash-protected legacy trainer.
 
 The checked-in repair is deliberately narrow: `legacy-build.txt` installs
 `cmake==3.25.0`, `lit==15.0.7`, and `pybind11==2.11.1` before native runtime

@@ -42,6 +42,23 @@ grouping, disjointness, data/ID hashes, tamper failure, launcher import-path
 ordering, and trainer role isolation. A real-asset build and GPU trainer smoke
 remain target-host acceptance work.
 
+The first manifest-backed RM launch also reached the pinned Open-Assistant
+tokenizer/model factory and exposed its architecture-name substring contract.
+`local_model_compat.py` now consumes the explicit cluster-only
+`model_family: pythia` hint, verifies the local checkpoint's `config.json`
+declares `model_type: gpt_neox`, and preserves the original path while invoking
+the unchanged legacy tokenizer and `GPTNeoXRewardModel` branches. This is an
+offline path-compatibility adapter, not a change to RM architecture or training
+semantics.
+
+The target-host RM acceptance run is submitted through
+`scripts/slurm/train_proxy_rm.sbatch`. It requests a single BF16-capable
+A100-40GB, keeps caches on scratch, verifies the pinned local base and split
+manifest before loading training data, refuses to overwrite a completed seed,
+and records checkpoint hashes. The charge account remains a submission-time
+argument because it is user/research-group specific. Seeds 1--5 are independent
+Slurm array tasks, not one distributed RM job.
+
 The first Phoenix real-asset attempt exposed two loader compatibility defects
 before any bundle was written. The legacy environment now pins
 `fsspec==2023.9.2`, and the builder no longer passes whole snapshot directories
