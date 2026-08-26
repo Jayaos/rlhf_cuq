@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH -t30
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:1 -C V100
 #SBATCH -qinferno
 #SBATCH -o Report-smoke-fp16-%j.out
 #SBATCH --mail-type=ALL
