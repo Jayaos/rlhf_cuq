@@ -18,7 +18,6 @@
 #SBATCH --mail-user=jlee3541@gatech.edu
 
 module load anaconda3
-conda activate mfg_flow
 
 set -euo pipefail
 
@@ -48,8 +47,12 @@ if ! command -v conda >/dev/null 2>&1; then
   echo "ERROR: conda is not on PATH. Activate rlhf-cuq before sbatch, or load the site's Conda module." >&2
   exit 2
 fi
+# Conda activation hooks may read unset variables (for example,
+# MKL_INTERFACE_LAYER), so temporarily disable Bash nounset.
+set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
+set -u
 
 # Keep build, Hugging Face, and temporary caches off quota-limited home storage.
 source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"

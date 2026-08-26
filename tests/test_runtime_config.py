@@ -237,6 +237,25 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertIn('--rng_seed "$RM_SEED"', job_text)
 
+    def test_proxy_rm_jobs_make_conda_activation_nounset_safe(self) -> None:
+        for filename in (
+            "train_proxy_rm.sbatch",
+            "smoke_proxy_rm.sbatch",
+            "smoke_proxy_rm_any_gpu.sbatch",
+        ):
+            with self.subTest(filename=filename):
+                job_text = (ROOT / "scripts/slurm" / filename).read_text(
+                    encoding="utf-8"
+                )
+                self.assertNotIn("conda activate mfg_flow", job_text)
+                nounset_off = job_text.index("set +u")
+                hook = job_text.index('eval "$(conda shell.bash hook)"')
+                activate = job_text.index('conda activate "$CONDA_ENV_NAME"')
+                nounset_on = job_text.index("set -u", activate)
+                self.assertLess(nounset_off, hook)
+                self.assertLess(hook, activate)
+                self.assertLess(activate, nounset_on)
+
     def test_proxy_rm_smoke_job_is_small_isolated_and_manifest_backed(self) -> None:
         config_text = (ROOT / "configs/config_rm_cluster.yaml").read_text(
             encoding="utf-8"
@@ -271,7 +290,7 @@ class RuntimeConfigTests(unittest.TestCase):
             "#SBATCH --account=gts-yxie77-paid",
             "#SBATCH --mem=16G",
             "#SBATCH --gres=gpu:1 -C A100",
-            "#SBATCH -t20",
+            "#SBATCH -t30",
         ):
             self.assertIn(directive, job_text)
         self.assertIn("--asset proxy_rm_sft_base", job_text)

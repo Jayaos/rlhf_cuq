@@ -6,7 +6,7 @@
 #SBATCH -J proxy_rm_44m_smoke
 #SBATCH --account=gts-yxie77-paid
 #SBATCH --mem=16G
-#SBATCH -t20
+#SBATCH -t30
 #SBATCH --gres=gpu:1 -C A100
 #SBATCH -qinferno
 #SBATCH -o Report-smoke-%j.out
@@ -14,7 +14,6 @@
 #SBATCH --mail-user=jlee3541@gatech.edu
 
 module load anaconda3
-conda activate mfg_flow
 
 set -euo pipefail
 
@@ -45,8 +44,12 @@ if ! command -v conda >/dev/null 2>&1; then
   echo "ERROR: conda is not on PATH. Activate rlhf-cuq before sbatch." >&2
   exit 2
 fi
+# Conda activation hooks may read unset variables (for example,
+# MKL_INTERFACE_LAYER), so temporarily disable Bash nounset.
+set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
+set -u
 
 source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export CUDA_HOME="$CONDA_PREFIX"
