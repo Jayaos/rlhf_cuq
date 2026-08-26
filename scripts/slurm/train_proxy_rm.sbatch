@@ -7,16 +7,16 @@
 # Override RM_SEED for one seed, or submit an array for seeds 1--5:
 #   sbatch --account="$PACE_ACCOUNT" --array=1-5 scripts/slurm/train_proxy_rm.sbatch
 
-#SBATCH --job-name=rm44m
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH -J proxy_rm_pythia_44m
+#SBATCH --account=gts-yxie77-paid
 #SBATCH --mem=64G
-#SBATCH --gres=gpu:1
-#SBATCH --constraint=A100-40GB
-#SBATCH --qos=inferno
-#SBATCH --time=08:00:00
-#SBATCH --output=slurm-%x-%j.out
+#SBATCH -t60
+#SBATCH --gres=gpu:1 -C H200
+#SBATCH -qinferno
+#SBATCH -o Report-%j.out
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=jlee3541@gatech.edu
+
 
 set -euo pipefail
 
