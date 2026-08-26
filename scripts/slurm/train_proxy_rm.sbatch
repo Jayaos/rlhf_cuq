@@ -17,6 +17,8 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jlee3541@gatech.edu
 
+module load anaconda3
+conda activate mfg_flow
 
 set -euo pipefail
 
