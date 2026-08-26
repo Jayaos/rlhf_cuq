@@ -9,7 +9,7 @@
 
 #SBATCH -J proxy_rm_pythia_44m
 #SBATCH --account=gts-yxie77-paid
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH -t60
 #SBATCH --gres=gpu:1 -C A100
 #SBATCH -qinferno

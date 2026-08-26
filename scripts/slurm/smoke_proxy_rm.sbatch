@@ -5,11 +5,8 @@
 
 #SBATCH -J proxy_rm_44m_smoke
 #SBATCH --account=gts-yxie77-paid
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH -t30
+#SBATCH --mem=16G
+#SBATCH -t20
 #SBATCH --gres=gpu:1 -C A100
 #SBATCH -qinferno
 #SBATCH -o Report-smoke-%j.out
