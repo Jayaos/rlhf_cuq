@@ -220,7 +220,7 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         for directive in (
             "#SBATCH --account=gts-yxie77-paid",
-            "#SBATCH --mem=64G",
+            "#SBATCH --mem=32G",
             "#SBATCH --gres=gpu:1 -C A100",
             "#SBATCH -qinferno",
         ):
@@ -242,7 +242,7 @@ class RuntimeConfigTests(unittest.TestCase):
             encoding="utf-8"
         )
         smoke_overlay = config_text.split("rm-pythia-44m-cluster-smoke:", 1)[1].split(
-            "rm-pythia-44m-cluster-coste-native-split:", 1
+            "rm-pythia-44m-cluster-smoke-fp16:", 1
         )[0]
         for setting in (
             "size: 512",
@@ -268,11 +268,10 @@ class RuntimeConfigTests(unittest.TestCase):
             encoding="utf-8"
         )
         for directive in (
-            "#SBATCH --nodes=1",
-            "#SBATCH --ntasks=1",
-            "#SBATCH --cpus-per-task=8",
+            "#SBATCH --account=gts-yxie77-paid",
+            "#SBATCH --mem=16G",
             "#SBATCH --gres=gpu:1 -C A100",
-            "#SBATCH -t30",
+            "#SBATCH -t20",
         ):
             self.assertIn(directive, job_text)
         self.assertIn("--asset proxy_rm_sft_base", job_text)
@@ -288,6 +287,47 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertNotIn("prompt-disjoint-smoke", rl_config)
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("/models/", gitignore)
+
+    def test_generic_gpu_rm_smoke_uses_fp16_without_flash_attention(self) -> None:
+        config_text = (ROOT / "configs/config_rm_cluster.yaml").read_text(
+            encoding="utf-8"
+        )
+        fp16_overlay = config_text.split(
+            "rm-pythia-44m-cluster-smoke-fp16:", 1
+        )[1].split("rm-pythia-44m-cluster-coste-native-split:", 1)[0]
+        self.assertIn(
+            "output_dir: models/rm-pythia-44m-prompt-disjoint-smoke-fp16",
+            fp16_overlay,
+        )
+        self.assertIn("dtype: fp16", fp16_overlay)
+        self.assertIn("use_flash_attention: false", fp16_overlay)
+
+        accelerate_text = (ROOT / "configs/accelerate_config_fp16.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("mixed_precision: fp16", accelerate_text)
+        self.assertNotIn("mixed_precision: bf16", accelerate_text)
+
+        job_text = (ROOT / "scripts/slurm/smoke_proxy_rm_any_gpu.sbatch").read_text(
+            encoding="utf-8"
+        )
+        for directive in (
+            "#SBATCH --cpus-per-task=4",
+            "#SBATCH --mem=16G",
+            "#SBATCH -t30",
+            "#SBATCH --gres=gpu:1\n",
+        ):
+            self.assertIn(directive, job_text)
+        self.assertNotIn("-C A100", job_text)
+        self.assertNotIn("is_bf16_supported", job_text)
+        self.assertIn("configs/accelerate_config_fp16.yaml", job_text)
+        self.assertIn(
+            "--configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-smoke "
+            "rm-pythia-44m-cluster-smoke-fp16",
+            job_text,
+        )
+        self.assertIn("prompt-disjoint-smoke-fp16_seed${RM_SEED}", job_text)
+        self.assertIn("PASS generic-GPU FP16 proxy-RM pipeline smoke", job_text)
 
     def test_gold_call_is_guarded_by_runtime_flag(self) -> None:
         tree = ast.parse((ROOT / "src" / "ppo" / "trainer_rl.py").read_text(encoding="utf-8"))

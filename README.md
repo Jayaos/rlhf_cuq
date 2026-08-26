@@ -287,39 +287,45 @@ This does not download LLaMA-7B and does not make gold scoring ready. The pinned
 
 #### Experiment 1a: short proxy-RM pipeline smoke
 
-Before the full five-epoch seed, submit the dedicated non-scientific smoke job
-from the repository root:
+When the A100 queue is long, use the generic-GPU FP16 smoke job. It intentionally
+removes the A100 constraint, disables FlashAttention, and can run on a V100,
+RTX6000, A100, or another CUDA GPU with FP16 support:
 
 ```bash
 conda activate rlhf-cuq
 cd "$PROJECT_ROOT"
-bash -n scripts/slurm/smoke_proxy_rm.sbatch
-JOB_ID=$(sbatch --parsable scripts/slurm/smoke_proxy_rm.sbatch | cut -d';' -f1)
-echo "Submitted smoke job: $JOB_ID"
+bash -n scripts/slurm/smoke_proxy_rm_any_gpu.sbatch
+JOB_ID=$(sbatch --parsable scripts/slurm/smoke_proxy_rm_any_gpu.sbatch | cut -d';' -f1)
+echo "Submitted generic-GPU smoke job: $JOB_ID"
 ```
 
 The smoke overlay deterministically samples 512 pairs from `D_rm_train`, uses
 128 `D_rm_val` pairs, keeps the production batch size 8 and gradient
 accumulation 4, and runs one epoch (16 optimizer steps). It evaluates at steps
-8 and 16, performs final reward mean/std normalization, and saves once. The job
-requests one A100 for 30 minutes and should normally finish in roughly 5--15
-minutes after it starts.
+8 and 16, performs final reward mean/std normalization, and saves once. The
+generic job requests one unconstrained GPU, four CPUs, 16 GiB CPU RAM, and 30
+minutes. Expect roughly 10--25 minutes on a V100 or 5--15 minutes on an A100
+after the job starts.
 
 Monitor it with:
 
 ```bash
 squeue -j "$JOB_ID"
-tail -f "Report-smoke-${JOB_ID}.out"
+tail -f "Report-smoke-fp16-${JOB_ID}.out"
 sacct -j "$JOB_ID" --format=JobID,State,Elapsed,ExitCode,AllocTRES
 ```
 
 Success requires `State=COMPLETED`, `ExitCode=0:0`, and the final log line
-`PASS proxy-RM pipeline smoke`. The isolated outputs are:
+`PASS generic-GPU FP16 proxy-RM pipeline smoke`. The isolated outputs are:
 
 ```text
-models/rm-pythia-44m-prompt-disjoint-smoke_seed1/
-artifacts/checksums/rm-pythia-44m-prompt-disjoint-smoke_seed1.sha256
+models/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1/
+artifacts/checksums/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1.sha256
 ```
+
+To test the exact A100/BF16/FlashAttention path instead, submit
+`scripts/slurm/smoke_proxy_rm.sbatch`; that job retains the A100 constraint and
+currently requests 16 GiB CPU RAM for 20 minutes.
 
 This checkpoint is deliberately trained on too little data and must not be
 used for PPO or reported as an experimental RM. The job refuses to overwrite a
@@ -382,7 +388,7 @@ pace-quota
 sbatch --time=04:00:00 scripts/slurm/train_proxy_rm.sbatch
 ```
 
-The checked-in job requests one A100, 64 GiB RAM, 60 minutes, and Phoenix
+The checked-in job requests one A100, 32 GiB RAM, 60 minutes, and Phoenix
 `inferno` QOS; the command above raises the allocation to four hours. It derives
 the repository from the directory where `sbatch` is invoked and places caches under
 `/storage/scratch1/0/$USER/rlhf-cuq`. Override those defaults at submission

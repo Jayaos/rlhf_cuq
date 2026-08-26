@@ -57,9 +57,12 @@ through the existing custom sampler, 128 validation pairs through the manifest
 adapter, one epoch/16 optimizer steps, two evaluations, final normalization,
 and an isolated checkpoint. It verifies the pinned base and split bundle before
 training and validates finite normalization/model/tokenizer artifacts after
-training. `scripts/slurm/train_proxy_rm.sbatch` remains the full five-epoch
-entry point. Both request one BF16-capable A100 and keep caches on scratch;
-neither changes the hash-protected trainer. Full seeds 1--5 are independent
+training. `scripts/slurm/smoke_proxy_rm_any_gpu.sbatch` reuses the same small
+data/step profile but adds an explicit FP16/no-FlashAttention overlay and FP16
+Accelerate config, allowing a queue-availability check on V100/RTX6000/A100
+without altering the primary BF16 path. `scripts/slurm/train_proxy_rm.sbatch`
+remains the full five-epoch entry point. All jobs keep caches on scratch and
+leave the hash-protected trainer unchanged. Full seeds 1--5 are independent
 Slurm array tasks, not one distributed RM job, and smoke checkpoints are never
 valid PPO inputs or experimental results.
 

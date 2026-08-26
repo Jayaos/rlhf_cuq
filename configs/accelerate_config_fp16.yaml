@@ -1,0 +1,17 @@
+# Single-process compatibility launcher for non-scientific GPU smoke tests.
+# The primary A100/BF16 experiments continue to use accelerate_config_simple.yaml.
+
+compute_environment: LOCAL_MACHINE
+distributed_type: no
+downcast_bf16: no
+dynamo_config: {}
+fsdp_config: {}
+machine_rank: 0
+main_training_function: main
+megatron_lm_config: {}
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+use_cpu: false
+mixed_precision: fp16

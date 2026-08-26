@@ -32,6 +32,13 @@ rm-pythia-44m-cluster-smoke:
   eval_steps: 8
   save_strategy: "no"
 
+# Hardware-compatible delta for a fast queue smoke on V100/RTX6000/other GPUs.
+# Merge after rm-pythia-44m-cluster-smoke; never use this output for PPO.
+rm-pythia-44m-cluster-smoke-fp16:
+  output_dir: models/rm-pythia-44m-prompt-disjoint-smoke-fp16
+  dtype: fp16
+  use_flash_attention: false
+
 # Coste-native replication only: its RM and PPO source families share prompts.
 rm-pythia-44m-cluster-coste-native-split:
   model_name: assets/proxy_rm_sft_base
