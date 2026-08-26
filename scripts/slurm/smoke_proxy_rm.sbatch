@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# Train one manifest-backed 44M proxy reward model on a Phoenix GPU node.
-#
+# Non-scientific end-to-end check of the manifest-backed proxy-RM pipeline.
 # Submit from the repository root with:
-#   sbatch --account="$PACE_ACCOUNT" scripts/slurm/train_proxy_rm.sbatch
-#
-# Override RM_SEED for one seed, or submit an array for seeds 1--5:
-#   sbatch --account="$PACE_ACCOUNT" --array=1-5 scripts/slurm/train_proxy_rm.sbatch
+#   sbatch scripts/slurm/smoke_proxy_rm.sbatch
 
-#SBATCH -J proxy_rm_pythia_44m
+#SBATCH -J proxy_rm_44m_smoke
 #SBATCH --account=gts-yxie77-paid
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH -t60
+#SBATCH -t30
 #SBATCH --gres=gpu:1 -C A100
 #SBATCH -qinferno
-#SBATCH -o Report-%j.out
+#SBATCH -o Report-smoke-%j.out
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jlee3541@gatech.edu
-
 
 set -euo pipefail
 
@@ -26,30 +24,30 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
 fi
 
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
-RM_SEED="${SLURM_ARRAY_TASK_ID:-${RM_SEED:-1}}"
+RM_SEED="${RM_SEED:-1}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-OUTPUT_DIR="models/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}"
+OUTPUT_DIR="models/rm-pythia-44m-prompt-disjoint-smoke_seed${RM_SEED}"
+CHECKSUM_FILE="artifacts/checksums/rm-pythia-44m-prompt-disjoint-smoke_seed${RM_SEED}.sha256"
 
 if [[ ! "$RM_SEED" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: RM_SEED/SLURM_ARRAY_TASK_ID must be a positive integer: $RM_SEED" >&2
+  echo "ERROR: RM_SEED must be a positive integer: $RM_SEED" >&2
   exit 2
 fi
 
 cd "$PROJECT_ROOT"
 if [[ ! -f pyproject.toml || ! -f scripts/configure_cluster_storage.sh ]]; then
-  echo "ERROR: RLHF_PROJECT_ROOT/SLURM_SUBMIT_DIR is not the repository root: $PROJECT_ROOT" >&2
+  echo "ERROR: submit from the repository root or set RLHF_PROJECT_ROOT: $PROJECT_ROOT" >&2
   exit 2
 fi
 
 if ! command -v conda >/dev/null 2>&1; then
-  echo "ERROR: conda is not on PATH. Activate rlhf-cuq before sbatch, or load the site's Conda module." >&2
+  echo "ERROR: conda is not on PATH. Activate rlhf-cuq before sbatch." >&2
   exit 2
 fi
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
 
-# Keep build, Hugging Face, and temporary caches off quota-limited home storage.
 source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export CUDA_HOME="$CONDA_PREFIX"
 export MAX_JOBS="${SLURM_CPUS_PER_TASK:-8}"
@@ -65,34 +63,40 @@ echo "Repository: $PROJECT_ROOT"
 echo "Git revision: $(git rev-parse HEAD)"
 echo "Conda environment: $CONDA_PREFIX"
 echo "Scratch/cache root: $JOB_STORAGE_ROOT"
-echo "RM seed: $RM_SEED"
+echo "Smoke seed: $RM_SEED"
 echo "Expected output: $OUTPUT_DIR"
+echo "Plan: 512 training pairs, 1 epoch, effective batch 32, 16 optimizer steps"
 
 nvidia-smi
 python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpu', torch.cuda.get_device_name(0), 'bf16', torch.cuda.is_bf16_supported()); assert torch.cuda.is_bf16_supported(), 'The checked RM configuration requires BF16 support'"
 
+python scripts/download_assets.py \
+  --asset-root assets \
+  --asset proxy_rm_sft_base \
+  --verify-only
+python scripts/build_data_manifest.py \
+  --config configs/data_split_prompt_disjoint_v1.yaml \
+  --verify-only
+
 if [[ -d "$OUTPUT_DIR" ]] && [[ -n "$(find "$OUTPUT_DIR" -mindepth 1 -print -quit)" ]]; then
-  echo "ERROR: output directory is not empty: $OUTPUT_DIR" >&2
-  echo "Move it aside or select a new seed; this script will not overwrite a prior run." >&2
+  echo "ERROR: smoke output is not empty: $OUTPUT_DIR" >&2
+  echo "Move the old smoke output aside before rerunning; this job will not overwrite it." >&2
   exit 2
 fi
 
 srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/reward_modeling/training/trainer_rm_manifest.py \
-  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
+  --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-smoke \
   --rng_seed "$RM_SEED"
 
-if [[ ! -d "$OUTPUT_DIR" ]]; then
-  echo "ERROR: training returned success but the expected output is missing: $OUTPUT_DIR" >&2
-  exit 1
-fi
+python -c "import json, math, pathlib, sys; root = pathlib.Path(sys.argv[1]); config = json.loads((root / 'config.json').read_text()); mean, std = config.get('mean'), config.get('std'); assert isinstance(mean, (int, float)) and math.isfinite(mean), f'invalid reward mean: {mean}'; assert isinstance(std, (int, float)) and math.isfinite(std) and std > 0, f'invalid reward std: {std}'; assert (root / 'tokenizer_config.json').is_file(), 'tokenizer_config.json missing'; assert any(path.suffix in {'.bin', '.safetensors'} for path in root.iterdir()), 'model weights missing'; print('PASS finite reward normalization', 'mean=', mean, 'std=', std)" "$OUTPUT_DIR"
 
 mkdir -p artifacts/checksums
 find "$OUTPUT_DIR" -type f -print0 \
   | sort -z \
   | xargs -0 sha256sum \
-  > "artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}.sha256"
+  > "$CHECKSUM_FILE"
 
-echo "PASS proxy RM seed $RM_SEED"
-echo "Checkpoint: $OUTPUT_DIR"
-echo "Checksums: artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}.sha256"
+echo "PASS proxy-RM pipeline smoke"
+echo "Smoke checkpoint (do not use for PPO): $OUTPUT_DIR"
+echo "Checksums: $CHECKSUM_FILE"

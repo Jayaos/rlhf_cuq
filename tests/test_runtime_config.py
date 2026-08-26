@@ -219,26 +219,75 @@ class RuntimeConfigTests(unittest.TestCase):
             encoding="utf-8"
         )
         for directive in (
-            "#SBATCH --nodes=1",
-            "#SBATCH --ntasks=1",
-            "#SBATCH --gres=gpu:1",
-            "#SBATCH --constraint=A100-40GB",
-            "#SBATCH --qos=inferno",
+            "#SBATCH --account=gts-yxie77-paid",
+            "#SBATCH --mem=64G",
+            "#SBATCH --gres=gpu:1 -C A100",
+            "#SBATCH -qinferno",
         ):
             self.assertIn(directive, job_text)
-        self.assertNotIn("#SBATCH --account=", job_text)
+        self.assertNotIn("-C H200", job_text)
         self.assertIn('[[ -z "${SLURM_JOB_ID:-}" ]]', job_text)
         self.assertIn("source scripts/configure_cluster_storage.sh", job_text)
         self.assertIn("assert torch.cuda.is_available()", job_text)
         self.assertIn("assert torch.cuda.is_bf16_supported()", job_text)
-        self.assertIn("--asset proxy_rm_sft_base", job_text)
-        self.assertIn("configs/data_split_prompt_disjoint_v1.yaml", job_text)
         self.assertIn("src/reward_modeling/training/trainer_rm_manifest.py", job_text)
         self.assertIn(
             "--configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split",
             job_text,
         )
         self.assertIn('--rng_seed "$RM_SEED"', job_text)
+
+    def test_proxy_rm_smoke_job_is_small_isolated_and_manifest_backed(self) -> None:
+        config_text = (ROOT / "configs/config_rm_cluster.yaml").read_text(
+            encoding="utf-8"
+        )
+        smoke_overlay = config_text.split("rm-pythia-44m-cluster-smoke:", 1)[1].split(
+            "rm-pythia-44m-cluster-coste-native-split:", 1
+        )[0]
+        for setting in (
+            "size: 512",
+            "eval_size: 128",
+            "num_train_epochs: 1",
+            "warmup_steps: 2",
+            "logging_steps: 1",
+            "eval_steps: 8",
+            'save_strategy: "no"',
+        ):
+            self.assertIn(setting, smoke_overlay)
+        self.assertIn(
+            "output_dir: models/rm-pythia-44m-prompt-disjoint-smoke",
+            smoke_overlay,
+        )
+        self.assertIn(
+            "data_split_manifest_path: "
+            "data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json",
+            smoke_overlay,
+        )
+
+        job_text = (ROOT / "scripts/slurm/smoke_proxy_rm.sbatch").read_text(
+            encoding="utf-8"
+        )
+        for directive in (
+            "#SBATCH --nodes=1",
+            "#SBATCH --ntasks=1",
+            "#SBATCH --cpus-per-task=8",
+            "#SBATCH --gres=gpu:1 -C A100",
+            "#SBATCH -t30",
+        ):
+            self.assertIn(directive, job_text)
+        self.assertIn("--asset proxy_rm_sft_base", job_text)
+        self.assertIn("configs/data_split_prompt_disjoint_v1.yaml", job_text)
+        self.assertIn(
+            "--configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-smoke",
+            job_text,
+        )
+        self.assertIn("prompt-disjoint-smoke_seed${RM_SEED}", job_text)
+        self.assertIn("PASS finite reward normalization", job_text)
+        self.assertIn("Smoke checkpoint (do not use for PPO)", job_text)
+        rl_config = (ROOT / "configs/config_rl.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("prompt-disjoint-smoke", rl_config)
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("/models/", gitignore)
 
     def test_gold_call_is_guarded_by_runtime_flag(self) -> None:
         tree = ast.parse((ROOT / "src" / "ppo" / "trainer_rl.py").read_text(encoding="utf-8"))

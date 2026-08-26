@@ -15,6 +15,23 @@ rm-pythia-44m-cluster-split:
   output_dir: models/rm-pythia-44m-prompt-disjoint
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
 
+# Non-scientific GPU pipeline check: 512 deterministic training pairs produce
+# 16 optimizer steps with the inherited batch-size 8 / accumulation 4 setup.
+rm-pythia-44m-cluster-smoke:
+  model_name: assets/proxy_rm_sft_base
+  model_family: pythia
+  output_dir: models/rm-pythia-44m-prompt-disjoint-smoke
+  data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+  datasets:
+    - custom_hf_pref:
+        size: 512
+  eval_size: 128
+  num_train_epochs: 1
+  warmup_steps: 2
+  logging_steps: 1
+  eval_steps: 8
+  save_strategy: "no"
+
 # Coste-native replication only: its RM and PPO source families share prompts.
 rm-pythia-44m-cluster-coste-native-split:
   model_name: assets/proxy_rm_sft_base

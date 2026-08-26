@@ -51,13 +51,17 @@ the unchanged legacy tokenizer and `GPTNeoXRewardModel` branches. This is an
 offline path-compatibility adapter, not a change to RM architecture or training
 semantics.
 
-The target-host RM acceptance run is submitted through
-`scripts/slurm/train_proxy_rm.sbatch`. It requests a single BF16-capable
-A100-40GB, keeps caches on scratch, verifies the pinned local base and split
-manifest before loading training data, refuses to overwrite a completed seed,
-and records checkpoint hashes. The charge account remains a submission-time
-argument because it is user/research-group specific. Seeds 1--5 are independent
-Slurm array tasks, not one distributed RM job.
+The target-host RM path now has separate Slurm entry points. The non-scientific
+`scripts/slurm/smoke_proxy_rm.sbatch` selects 512 deterministic training pairs
+through the existing custom sampler, 128 validation pairs through the manifest
+adapter, one epoch/16 optimizer steps, two evaluations, final normalization,
+and an isolated checkpoint. It verifies the pinned base and split bundle before
+training and validates finite normalization/model/tokenizer artifacts after
+training. `scripts/slurm/train_proxy_rm.sbatch` remains the full five-epoch
+entry point. Both request one BF16-capable A100 and keep caches on scratch;
+neither changes the hash-protected trainer. Full seeds 1--5 are independent
+Slurm array tasks, not one distributed RM job, and smoke checkpoints are never
+valid PPO inputs or experimental results.
 
 The first Phoenix real-asset attempt exposed two loader compatibility defects
 before any bundle was written. The legacy environment now pins

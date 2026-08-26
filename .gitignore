@@ -7,6 +7,7 @@ wandb/
 
 # models
 /assets/
+/models/
 /data/processed/
 pythia-*
 ckpts/
