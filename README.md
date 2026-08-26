@@ -27,12 +27,19 @@ Use this section for the audited cluster workflow. The historical upstream instr
 | --- | --- | --- | --- |
 | Source audit and unit tests | Check source revisions, file hashes, configs, and local helpers | CPU; no model payloads | Runnable |
 | Proxy RM, seed 1 | Train the Coste 44M proxy RM from the pinned 70M SFT base | RM base + preference dataset | Runnable on one GPU; required before PPO |
-| Proxy RM, seeds 1--5 | Produce the five members used by the Coste ensemble | Same as above | Runnable as a job array after seed 1 passes |
-| PPO integration smoke | One optimizer update using the real 1.4B policy and one RM | Policy + prompts + trained seed-1 RM | Runnable on one GPU; setup check only |
+| Additional proxy-RM seeds | Optional ensemble uncertainty comparator for Section 5.1 | Same as above | Not required for the primary track; the original AdvPO diagnostic used three-member ensembles |
+| PPO integration smoke | One optimizer update using the real 1.4B policy and one RM | Policy + prompts + structurally valid full or smoke RM | Runnable on one GPU; setup check only |
 | Checked-code single-RM PPO | Run the vendored `configs/ppo_config.yaml` on the strict split for 3,000 steps | Same as smoke | Runnable only after the smoke gate; gold must stay off |
-| Checked-code ensemble PPO | Run the five strict-split RMs with the configured mean/WCO/UWO objective | Policy + prompts + five trained RMs | Mean is configured; set and record WCO/UWO fields for separate runs |
+| Coste ensemble PPO | Reproduce Coste mean/WCO/UWO behavior | Policy + prompts + five trained RMs | Retained as an optional legacy path; out of scope for the primary AdvPO experiments |
 | Offline gold scoring | Measure reward overoptimization without exposing gold reward online | Reconstructed AlpacaFarm 7B RM | Blocked: licensed base, reconstruction pinning, and prompt formatter validation remain open |
 | AdvPO and proposed conformal methods | Section 5.1/5.2 and new uncertainty experiments | Method code and frozen equations | Not implemented yet; there is no valid launch command |
+
+The primary experiment uses one seed-1 proxy RM, frozen and shared by PPO,
+AdvPO, proposed-static, and proposed-adaptive. Coste's five-RM ensemble and
+mean/WCO/UWO optimization are not required. The original AdvPO Section 5.1
+included three-member ensemble uncertainty comparators; omitting them is a
+declared controlled adaptation, while the Section 5.2 PPO-versus-AdvPO
+comparison still requires only the one shared proxy RM.
 
 The checked PPO YAML uses `num_rollouts=4` and `chunk_size=2`; the Coste paper reports 256 and 32. Treat this as the checked-code baseline, not a paper-faithful reproduction. Do not start a reportable large run until the one-update smoke saves and resumes a checkpoint and its KL accounting is understood. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md), [open method decisions](docs/OPEN_METHOD_DECISIONS.md), and [environment lock notes](docs/ENVIRONMENT_LOCK.md) for the acceptance gates.
 
@@ -327,10 +334,11 @@ To test the exact A100/BF16/FlashAttention path instead, submit
 `scripts/slurm/smoke_proxy_rm.sbatch`; that job retains the A100 constraint and
 currently requests 16 GiB CPU RAM for 20 minutes.
 
-This checkpoint is deliberately trained on too little data and must not be
-used for PPO or reported as an experimental RM. The job refuses to overwrite a
-nonempty prior smoke directory; move that directory aside if a failed run must
-be repeated.
+This checkpoint is deliberately trained on too little data. It may be used only
+for the one-update PPO integration smoke selected by `baseline_smoke`; it must
+not be used for checked-code/full PPO, AdvPO, method comparisons, or reported
+results. The job refuses to overwrite a nonempty prior smoke directory; move
+that directory aside if a failed run must be repeated.
 
 #### Experiment 1b: full proxy-RM seed
 
@@ -367,6 +375,13 @@ and confirm `grep -n model_family configs/config_rm_cluster.yaml` prints the
 three cluster overlays.
 
 Expected output: `models/rm-pythia-44m-prompt-disjoint_seed1`. Confirm that it contains model/tokenizer files and a finite saved reward normalization mean/std, then hash it:
+
+The manifest wrapper performs one explicit validation pass immediately after
+the final optimizer update. The log must contain
+`PASS final RM validation` with `final_eval_D_rm_val_accuracy`; the complete
+metric mapping is also saved as `final_eval_results.json` in the output
+directory. This final pass is separate from the inherited evaluations every
+300 steps and does not update the model or optimizer.
 
 ```bash
 mkdir -p artifacts/checksums
@@ -412,20 +427,54 @@ The job refuses to run outside Slurm, confirms CUDA and BF16 support, refuses
 to overwrite a nonempty seed output, trains the RM, and writes checkpoint
 hashes under `artifacts/checksums/`.
 
-Only after seed 1 passes, train seeds 1--5 for ensemble experiments:
+Seed 1 is the only proxy RM required for the primary AdvPO Section 5.1/5.2
+adaptation. Do not submit an RM job array for the primary track. Keep that exact
+checkpoint frozen and use it for every optimization method and policy seed.
+
+If a three-member ensemble uncertainty comparator is added later for a closer
+Section 5.1 diagnostic, train two additional RMs as a separately declared
+optional comparison. This is not the Coste five-member ensemble experiment.
+The Slurm script supports independent array tasks, for example:
 
 ```bash
-sbatch --time=04:00:00 --array=1-5 \
+sbatch --time=04:00:00 --array=2-3 \
   scripts/slurm/train_proxy_rm.sbatch
 ```
 
-Do not launch one multi-GPU RM job: each array element is an independent
-one-GPU seed. Phoenix uses QOS and assigns the resource pool from the request;
-do not add an arbitrary partition copied from another cluster.
+This optional command is not part of the primary runbook. Do not launch one
+multi-GPU RM job: each array element is an independent one-GPU seed. Phoenix
+uses QOS and assigns the resource pool from the request; do not add an arbitrary
+partition copied from another cluster.
 
 ### Experiment 2: one-update PPO smoke
 
-Request one Ampere-or-newer GPU (40 GiB is a conservative starting request), activate the environment, set the offline variables, and run:
+The checked-in batch job requests one A100/H100/H200-class GPU, four CPUs,
+32 GiB host RAM, and 45 minutes. It defaults to the A100/BF16 proxy-RM smoke
+checkpoint. Submit it from the repository root:
+
+```bash
+conda activate rlhf-cuq
+cd "$PROJECT_ROOT"
+bash -n scripts/slurm/smoke_ppo.sbatch
+JOB_ID=$(sbatch --parsable scripts/slurm/smoke_ppo.sbatch | cut -d';' -f1)
+echo "Submitted PPO smoke job: $JOB_ID"
+```
+
+To use the generic-GPU FP16 proxy-RM smoke checkpoint instead:
+
+```bash
+sbatch --export=ALL,PPO_SMOKE_RM_PATH=models/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1 \
+  scripts/slurm/smoke_ppo.sbatch
+```
+
+To use the full seed-1 proxy RM, set
+`PPO_SMOKE_RM_PATH=models/rm-pythia-44m-prompt-disjoint_seed1` in the same way.
+The PPO job itself remains BF16 and therefore excludes V100. Command-line
+`sbatch` options can override the checked-in account, QOS, time, or constraint
+when the Phoenix allocation requires it.
+
+The batch job runs the following command. Use it directly only inside an
+existing Ampere-or-newer GPU allocation:
 
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \
@@ -435,7 +484,19 @@ accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --proxy_rm_path_override models/rm-pythia-44m-prompt-disjoint_seed1
 ```
 
-This uses two rollouts, one PPO epoch, one optimizer update, two evaluation prompts, and no gold load. It is an integration test, not a scientific experiment. Inspect `runs/ppo_smoke`, verify finite proxy/KL values, verify a checkpoint can be reloaded, and capture the environment before crossing Gate 1. The legacy evaluator can still generate up to 256 tokens even though smoke rollouts are capped at 16.
+For the A100/BF16 proxy-RM smoke output, replace the last argument with:
+
+```text
+models/rm-pythia-44m-prompt-disjoint-smoke_seed1
+```
+
+For the generic-GPU FP16 proxy-RM smoke output, use:
+
+```text
+models/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1
+```
+
+This uses two rollouts, one PPO epoch, one optimizer update, two evaluation prompts, and no gold load. It is an integration test, not a scientific experiment. A proxy-RM smoke checkpoint validates loading, reward callback execution, PPO update, and artifact writing, but it says nothing about reward quality or overoptimization. Success ends with `PASS one-update PPO pipeline smoke`; the job checks finite proxy/KL values, the final policy, and `runs/ppo_smoke_checkpoints/checkpoint_1/hf_model`, then writes checksums under `artifacts/checksums/`. It refuses to overwrite nonempty `runs/ppo_smoke`, `runs/ppo_smoke_checkpoints`, or the legacy `output.txt` prompt preview. Move prior artifacts aside before retrying. Repeat the PPO smoke with the full seed-1 RM before any full run. The legacy evaluator can still generate up to 256 tokens even though smoke rollouts are capped at 16.
 
 ### Experiment 3: checked-code PPO baselines on the strict split
 
@@ -452,7 +513,10 @@ accelerate launch --config_file configs/accelerate_config_simple.yaml \
 
 This selects `configs/ppo_config.yaml` (3,000 steps, four rollouts, chunk size two, four PPO epochs, KL coefficient 0.1). Do not describe it as a faithful paper reproduction. The legacy DeepSpeed launcher remains unvalidated because its `auto` batch fields are not wired cleanly through the custom trainer, so the commands here deliberately use the one-process launcher.
 
-After all five RM directories exist, the configured ensemble-mean run is:
+The following is retained only as a Coste compatibility example. Do not run it
+for the primary AdvPO Section 5.1/5.2 track. If a later study explicitly adds
+the five-member Coste ensemble-optimization baselines, the configured
+ensemble-mean run is:
 
 ```bash
 accelerate launch --config_file configs/accelerate_config_simple.yaml \

@@ -135,6 +135,32 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("batch_size: 2", smoke_text)
         self.assertIn("debug: false", smoke_overlay)
 
+    def test_ppo_smoke_sbatch_is_isolated_one_update_and_no_gold(self) -> None:
+        job_text = (ROOT / "scripts/slurm/smoke_ppo.sbatch").read_text(
+            encoding="utf-8"
+        )
+        for directive in (
+            "#SBATCH --account=gts-yxie77-paid",
+            "#SBATCH --cpus-per-task=4",
+            "#SBATCH --mem=32G",
+            "#SBATCH --time=00:45:00",
+            "#SBATCH --gres=gpu:1",
+            '#SBATCH --constraint="A100|H100|H200"',
+        ):
+            self.assertIn(directive, job_text)
+        self.assertIn("set +u", job_text)
+        self.assertIn("export PYTHONNOUSERSITE=1", job_text)
+        self.assertIn("--asset initial_sft_policy", job_text)
+        self.assertIn("configs/data_split_prompt_disjoint_v1.yaml", job_text)
+        self.assertIn("prompt-disjoint-smoke_seed1}", job_text)
+        self.assertIn("prompt_disjoint_data_split_v1 baseline_smoke", job_text)
+        self.assertIn("--run_gold_evaluation false", job_text)
+        self.assertIn("PASS proxy-RM checkpoint validation", job_text)
+        self.assertIn("PASS finite PPO smoke metrics", job_text)
+        self.assertIn("runs/ppo_smoke_checkpoints", job_text)
+        self.assertIn("PASS one-update PPO pipeline smoke", job_text)
+        self.assertNotIn("configs/ppo_config.yaml", job_text)
+
     def test_legacy_sources_are_editable_and_match_manifest_commits(self) -> None:
         source_requirements = (ROOT / "requirements" / "legacy-sources.txt").read_text(encoding="utf-8")
         requirement_lines = [
@@ -301,7 +327,10 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertIn("prompt-disjoint-smoke_seed${RM_SEED}", job_text)
         self.assertIn("PASS finite reward normalization", job_text)
-        self.assertIn("Smoke checkpoint (do not use for PPO)", job_text)
+        self.assertIn(
+            "Smoke checkpoint (use only for baseline_smoke PPO integration)",
+            job_text,
+        )
         rl_config = (ROOT / "configs/config_rl.yaml").read_text(encoding="utf-8")
         self.assertNotIn("prompt-disjoint-smoke", rl_config)
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")

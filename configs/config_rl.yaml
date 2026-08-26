@@ -70,6 +70,9 @@ pythia_rlhf_individual:
     batch_size: 32
 
 
+# Retained only for compatibility with the upstream Coste ensemble pipeline.
+# It is not part of the primary AdvPO Section 5.1/5.2 experiment track, which
+# uses the single frozen seed-1 RM configured above for every method.
 pythia_rlhf_ensemble:
   output_dir: runs/ppo_ensemble_prompt_disjoint
   datasets:

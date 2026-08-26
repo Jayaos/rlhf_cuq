@@ -15,6 +15,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data_utils.manifest_dataset_loader import get_manifest_dataset  # noqa: E402
+from src.reward_modeling.training.final_evaluation import (  # noqa: E402
+    evaluate_and_save_final_metrics,
+)
 from src.reward_modeling.training.local_model_compat import (  # noqa: E402
     apply_local_model_family,
 )
@@ -30,10 +33,20 @@ def _with_local_model_family(parser: Callable[[], Any]) -> Callable[[], Any]:
     return parse
 
 
+class ManifestRMTrainer(legacy_trainer.RMTrainer):
+    """Add exact post-update validation without changing Coste training."""
+
+    def train(self, *args: Any, **kwargs: Any) -> Any:
+        train_output = super().train(*args, **kwargs)
+        evaluate_and_save_final_metrics(self)
+        return train_output
+
+
 def main() -> None:
     """Delegate all model/training behavior to Coste while replacing data loading."""
 
     legacy_trainer.get_dataset = get_manifest_dataset
+    legacy_trainer.RMTrainer = ManifestRMTrainer
     legacy_trainer.argument_parsing = _with_local_model_family(
         legacy_trainer.argument_parsing
     )

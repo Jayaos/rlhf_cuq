@@ -40,7 +40,10 @@ PPO selects the adapter only when `data_split_manifest_path` is nonempty.
 Standard-library tests cover exact quota rounding, order independence, prompt
 grouping, disjointness, data/ID hashes, tamper failure, launcher import-path
 ordering, and trainer role isolation. A real-asset build and GPU trainer smoke
-remain target-host acceptance work.
+passed on Phoenix in job `12355991` at revision
+`86c5805a07d29f0372efa5a5338b0644070eb91e`: the strict manifest verified,
+all 16 smoke updates completed, finite reward normalization was saved, and the
+pipeline emitted its final pass marker.
 
 The first manifest-backed RM launch also reached the pinned Open-Assistant
 tokenizer/model factory and exposed its architecture-name substring contract.
@@ -62,9 +65,19 @@ data/step profile but adds an explicit FP16/no-FlashAttention overlay and FP16
 Accelerate config, allowing a queue-availability check on V100/RTX6000/A100
 without altering the primary BF16 path. `scripts/slurm/train_proxy_rm.sbatch`
 remains the full five-epoch entry point. All jobs keep caches on scratch and
-leave the hash-protected trainer unchanged. Full seeds 1--5 are independent
-Slurm array tasks, not one distributed RM job, and smoke checkpoints are never
-valid PPO inputs or experimental results.
+leave the hash-protected trainer unchanged. The primary track trains only seed
+1 and freezes that checkpoint across PPO, AdvPO, proposed-static, and
+proposed-adaptive. Additional independent Slurm array tasks are optional only
+for an explicitly declared ensemble diagnostic. A smoke RM may be used only by
+the opt-in one-update PPO integration profile to validate wiring; it is never a
+valid full-run or experimental RM.
+
+The manifest wrapper now uses an additive `ManifestRMTrainer` subclass to run
+one `D_rm_val` evaluation immediately after the final optimizer update. It
+logs `final_eval_D_rm_val_accuracy` and saves `final_eval_results.json` before
+the unchanged legacy normalization/save path continues. This evaluation has
+no gradient or optimizer update and is unit-tested independently; the next
+Phoenix RM run is its target-host acceptance check.
 
 The first Phoenix real-asset attempt exposed two loader compatibility defects
 before any bundle was written. The legacy environment now pins
@@ -75,12 +88,20 @@ unverified/reused file or duplicated row pool. The strict primary config
 excludes the Coste preference `unlabelled` pair file, includes the other three
 training files plus preference `val` in the RM pool, reserves AlpacaFarm
 `unlabeled` exclusively for PPO, and forbids every RM/PPO prompt overlap. A
-successful real-asset strict build and manifest verification remain the
-target-host acceptance evidence.
+successful real-asset strict build and manifest verification were observed in
+Phoenix job `12355991`.
+
+The Stage 1 launcher `scripts/slurm/smoke_ppo.sbatch` is implemented around the
+existing `baseline_smoke` overlay. It schedules one BF16 update on an
+A100/H100/H200-class GPU, keeps caches on scratch, forces gold evaluation off,
+accepts an explicit local policy/RM override, refuses to overwrite prior smoke
+artifacts, and validates the final policy, step-1 checkpoint, finite proxy/KL
+metrics, and output checksums. It changes no PPO equation. A real Phoenix run
+remains required before this launcher can satisfy any part of Gate 1.
 
 | Planned path | Existing component reused | Responsibility | Inputs → outputs | Equation | Required test | Expected cost | Baseline behavior |
 |---|---|---|---|---|---|---|---|
-| `scripts/build_data_manifest.py` | Coste preference loader; AlpacaFarm prompt loader | **IMPLEMENTED:** materialize revision-pinned, stable, disjoint IDs for RM train/val/calibration and RL train/val/test | Pinned dataset snapshots + seed/split policy → JSONL manifests + hashes | None | CPU synthetic tests pass; real pinned-payload build pending on cluster | O(dataset rows), materialized in host memory | Changes data selection from implicit first-N; required controlled adaptation |
+| `scripts/build_data_manifest.py` | Coste preference loader; AlpacaFarm prompt loader | **IMPLEMENTED:** materialize revision-pinned, stable, disjoint IDs for RM train/val/calibration and RL train/val/test | Pinned dataset snapshots + seed/split policy → JSONL manifests + hashes | None | CPU synthetic tests pass; pinned-payload verification passed in Phoenix job `12355991` | O(dataset rows), materialized in host memory | Changes data selection from implicit first-N; required controlled adaptation |
 | `src/reward_modeling/scoring/feature_extraction.py` and optional path in `score.py` | OA `GPTNeoXRewardModel.out_proj` | Capture the exact scalar-head input via pre-hook without duplicating pooling; return features only when requested | Tokenized prompt/answer + frozen RM → unchanged logits and optional `[batch,d]` features | `r = w^T e + c` identity only | Reconstruction tolerance, padding/EOS, split-batch equivalence, legacy output identity | Adds O(batch·d) memory/output when enabled; one existing forward | Default no; optional feature mode adds cost/artifact |
 | `src/reward_modeling/scoring/ppo_reward_functions.py` | Existing callback factory | Thread optional feature/metadata return through a backward-compatible API and define single-RM variance as absent rather than garbage | Samples/prompts/outputs → proxy scalar (+ optional feature/diagnostics) | None | Callback contract and byte-for-byte default score comparison | Negligible beyond feature capture | Correcting serialized variance changes invalid diagnostics, not online reward |
 | `src/ppo/uncertainty_logging.py` plus evaluation seam in `custom_accelerate_base_trainer.py` | Existing eval JSON serialization | Store prompt/sample IDs, optimizer/rollout step, seed, checkpoint, text, tokens, raw proxy, explicit uncertainty fields, and exact KL definitions | Gathered eval/rollout records → append-only schema-versioned JSONL | Named metrics only | Schema, rank aggregation, resume/no-duplicate records, same-sample joins | O(samples·text/features if enabled); bounded buffers | Online reward no; artifacts/runtime yes |
@@ -101,7 +122,7 @@ Gate 1 requires a deterministic real-asset smoke, saved generations, proxy/gold 
 | `src/uncertainty/advpo_objective.py` | Geometry solve; proxy scalar/features; reference cache | Compute global-batch `g`, `lambda_star`, adjusted policy and reference rewards, and diagnostics | Global rollout/reference features/rewards + `B` + factor → adjusted rewards | AdvPO Eqs. (8)–(9), exactly as frozen | Aggregate identity, `B→0`, identical features, near-zero `g`, scaling, rank aggregation | O(global batch·d + solve); O(d + batch) working memory | Only selected AdvPO method; standard PPO remains identical |
 | rollout-pool seam in `custom_accelerate_ppo_trainer.py` | Existing generate/gather/scatter path | Buffer a complete declared rollout pool or perform mathematically equivalent sufficient-statistic aggregation before reward finalization | All chunks/ranks + method adapter → globally consistent rewards | Finite estimator chosen for AdvPO `g` | Chunk-size invariance; one-rank vs simulated/distributed ranks; no deadlock | May retain O(R·tokens/features); collectives O(d) or gathered samples | No for standard PPO branch; changes AdvPO scheduling |
 | `src/ppo/reward_adapters.py` | `custom_helpers.get_reward_fn` factory seam | Common baseline/AdvPO adapter lifecycle, diagnostics, state serialization | Method config + batch inputs → scalar rewards + diagnostics/state | Baseline identity or Eq. (9) | Baseline callback identity, no-gold leakage, adapter save/load | Dispatch overhead; method-specific costs above | Baseline adapter must be exactly identical |
-| `scripts/run_section51_diagnostics.py` | Fixed sample logs + offline gold + feature API | Score proxy/gold/CI/ensemble on the same stored samples every declared interval; never retrain per estimator | Immutable sample IDs/artifacts → raw metric table | `U_CI=b*sqrt(e^T M_D^-1 e)` | Same-ID joins, signed/absolute/aligned definitions, Pearson fixture | Offline RM/solve passes; O(samples·d) | No training change |
+| `scripts/run_section51_diagnostics.py` | Fixed sample logs + offline gold + feature API | Score proxy/gold/CI on the same stored samples every declared interval; optionally score a separately declared three-member ensemble comparator; never retrain per estimator | Immutable sample IDs/artifacts → raw metric table | `U_CI=b*sqrt(e^T M_D^-1 e)` | Same-ID joins, signed/absolute/aligned definitions, Pearson fixture | Offline RM/solve passes; O(samples·d); optional ensemble adds its RM passes | No training change |
 | `configs/experiments/...` and `scripts/run_section52_methods.py` | Coste trainer/config merge | Separate Coste-native and AdvPO-stress protocols; pair seeds/manifests/checkpoints | Frozen experiment config → immutable run manifest | Selected method only | Config snapshot, seed pairing, forbidden-gold scan | Declared full GPU budget only after gates | Explicit per track; never silently edits baseline YAML |
 
 Before these rows can be implemented, the owner must freeze the Eq. (4) regularizer, global finite estimator for `g`, zero-`g` behavior, reference generation, reward rescaling, and `B` protocol. They are listed in the open-decisions document.
@@ -125,12 +146,12 @@ Implementation may start only after `docs/PROPOSED_METHOD_FROZEN.md` records eve
 
 1. Run standard-library Stage 0 tests and offline/online metadata audit.
 2. Resolve/install the legacy GPU environment; freeze its final lock/container.
-3. Train or authenticate the proxy RM and validate the offline gold reconstruction.
+3. Train the seed-1 proxy RM, freeze it for all methods, and validate the offline gold reconstruction.
 4. Pass Gate 1 on the opt-in smoke and then on the declared Coste-native config.
 5. Add feature identity and sample-level provenance before uncertainty code.
 6. Freeze AdvPO implementation choices, build Eq. (4), reproduce Section 5.1 diagnostics, then run PPO/AdvPO paired smoke.
 7. Confirm overoptimization in a predeclared track and pass exact AdvPO Gate 3.
 8. Freeze all proposed equations and only then implement static/adaptive rows.
-9. Run identical seeds/manifests/checkpoints across methods; gold remains offline-only.
+9. Run identical policy seeds/manifests and the same frozen seed-1 RM checkpoint across methods; gold remains offline-only.
 
 No large GPU run is authorized by this plan until its preceding acceptance gates pass.

@@ -54,6 +54,16 @@ Blocks: AdvPO Eq. (9), proposed reference-centered objectives, and fair method c
 
 Confirm the recommended Coste-native primary track (clean proxy labels, beta 0 stress, PPO/AdvPO/proposed-static/proposed-adaptive) or choose 25% Coste noise / 30% AdvPO-style noise. Freeze the label-flip seed/manifest, beta schedule, paper-sized versus code-sized rollouts, step budget, evaluation cadence, and whether a separate AdvPO-protocol track is secondary. Never mix tracks in one curve.
 
+Partially resolved by the owner on 2026-08-26: train one proxy RM with seed 1,
+freeze it, and share that exact checkpoint across PPO, AdvPO, proposed-static,
+and proposed-adaptive. The primary target is the AdvPO Section 5.1/5.2 logic
+using Coste assets, not Coste's ensemble method; therefore Coste's five-RM
+mean/WCO/UWO experiments and RM seeds 2--5 are excluded from the required
+track. The original AdvPO Section 5.1 used three-member RM ensembles as
+uncertainty comparators. They are omitted from the primary controlled
+adaptation and may be added later only as an explicitly optional comparator.
+Policy-run seeds and all other choices in this row remain OPEN.
+
 Blocks: full-run configs and statistical seed budget.
 
 ## AdvPO adaptation decisions exposed by the audit

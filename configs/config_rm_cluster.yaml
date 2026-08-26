@@ -33,7 +33,8 @@ rm-pythia-44m-cluster-smoke:
   save_strategy: "no"
 
 # Hardware-compatible delta for a fast queue smoke on V100/RTX6000/other GPUs.
-# Merge after rm-pythia-44m-cluster-smoke; never use this output for PPO.
+# Merge after rm-pythia-44m-cluster-smoke. This output is valid only for the
+# opt-in one-update PPO integration smoke, never for full/reportable PPO.
 rm-pythia-44m-cluster-smoke-fp16:
   output_dir: models/rm-pythia-44m-prompt-disjoint-smoke-fp16
   dtype: fp16

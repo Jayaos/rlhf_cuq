@@ -102,5 +102,5 @@ find "$OUTPUT_DIR" -type f -print0 \
   > "$CHECKSUM_FILE"
 
 echo "PASS generic-GPU FP16 proxy-RM pipeline smoke"
-echo "Smoke checkpoint (do not use for PPO): $OUTPUT_DIR"
+echo "Smoke checkpoint (use only for baseline_smoke PPO integration): $OUTPUT_DIR"
 echo "Checksums: $CHECKSUM_FILE"
