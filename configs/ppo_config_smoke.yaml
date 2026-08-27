@@ -11,6 +11,9 @@ train:
   checkpoint_dir: runs/ppo_smoke_checkpoints
   pipeline: "PromptPipeline"
   trainer: "CustomAcceleratePPOTrainer"
+  # Pinned trlx defaults to "wandb" when this field is omitted. This smoke is
+  # an offline integration check and must not require external credentials.
+  tracker: null
 
 model:
   model_path:

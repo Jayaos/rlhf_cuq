@@ -133,6 +133,7 @@ class RuntimeConfigTests(unittest.TestCase):
         for setting in ("total_steps: 1", "num_rollouts: 2", "chunk_size: 2", "ppo_epochs: 1"):
             self.assertIn(setting, smoke_text)
         self.assertIn("batch_size: 2", smoke_text)
+        self.assertIn("tracker: null", smoke_text)
         self.assertIn("debug: false", smoke_overlay)
 
     def test_ppo_smoke_sbatch_is_isolated_one_update_and_no_gold(self) -> None:

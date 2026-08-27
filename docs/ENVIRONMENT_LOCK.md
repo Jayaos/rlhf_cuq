@@ -224,6 +224,10 @@ The upstream recovery utility currently resolves weight-diff repositories withou
 
 ## Tiny baseline smoke profile
 
+The smoke profile sets `tracker: null` because the pinned trlx `TrainConfig`
+otherwise defaults to online W&B. This offline integration check must not
+require a W&B account or API key.
+
 The opt-in profile changes only scale and skips the separate gold phase:
 
 ```bash
