@@ -156,6 +156,7 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("prompt_disjoint_data_split_v1 baseline_smoke", job_text)
         self.assertIn("--run_gold_evaluation false", job_text)
         self.assertIn("PASS proxy-RM checkpoint validation", job_text)
+        self.assertIn("python scripts/validate_legacy_sources.py", job_text)
         self.assertIn("PASS finite PPO smoke metrics", job_text)
         self.assertIn("runs/ppo_smoke_checkpoints", job_text)
         self.assertIn("PASS one-update PPO pipeline smoke", job_text)
@@ -181,6 +182,19 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertNotIn("git+https://", project_text)
         runtime_text = (ROOT / "requirements" / "legacy-runtime.txt").read_text(encoding="utf-8")
         self.assertIn("typer==0.9.0", runtime_text)
+
+        validator_text = (
+            ROOT / "scripts" / "validate_legacy_sources.py"
+        ).read_text(encoding="utf-8")
+        for package_name, source_name in (
+            ("model_training", "open_assistant"),
+            ("oasst_data", "open_assistant"),
+            ("trlx", "trlx"),
+            ("alpaca_farm", "coste_alpaca_farm_fork"),
+        ):
+            self.assertIn(f'("{package_name}", "{source_name}")', validator_text)
+        self.assertIn('getattr(module, "train", None)', validator_text)
+        self.assertIn('importlib.import_module("trlx.trlx")', validator_text)
 
     def test_cluster_install_covers_observed_native_build_prerequisites(self) -> None:
         build_text = (ROOT / "requirements" / "legacy-build.txt").read_text(

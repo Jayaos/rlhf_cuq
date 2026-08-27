@@ -119,7 +119,8 @@ python -c "import pybind11; print(pybind11.__version__, pybind11.get_include())"
 python -c "import pathtools, threadpoolctl; print(pathtools.__file__); print(threadpoolctl.__version__, threadpoolctl.__file__)"
 python -m pip show cmake lit pybind11 pathtools pytest threadpoolctl
 python -m pip check
-python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import alpaca_farm, oasst_data, trlx; print('All imports passed')"
+python scripts/validate_legacy_sources.py
+python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import alpaca_farm, oasst_data, trlx; assert callable(trlx.train); print('All imports and trlx.train passed')"
 python -m pytest -q tests
 python scripts/audit_assets.py --offline
 ```
@@ -154,6 +155,26 @@ entire path component`, the legacy `datasets==2.14.4` install resolved an
 incompatible newer `fsspec`. The runtime requirements now pin
 `fsspec[http]==2023.9.2`; rerun the runtime transaction above rather than
 upgrading `datasets` or the legacy trainer stack.
+
+If PPO reports `module 'trlx' has no attribute 'train'`, Python is not loading
+the pinned editable `CarperAI/trlx` source: that revision exports
+`trlx.train`. Repair only that source package, then validate its Git revision
+and API on the login node before submitting another GPU job:
+
+```bash
+source scripts/configure_cluster_storage.sh \
+  "/storage/scratch1/0/$USER/rlhf-cuq"
+conda activate rlhf-cuq
+python -m pip uninstall -y trlx
+python -m pip install --no-build-isolation --no-deps --editable \
+  "git+https://github.com/CarperAI/trlx.git@3340c2f3a56d1d14fdd5f13ad575121fa26b6d92#egg=trlx"
+python scripts/validate_legacy_sources.py
+python -m pip check
+```
+
+This repair does not reinstall Torch, CUDA packages, Open Assistant, or the
+trained models. Do not work around the failure by installing an arbitrary
+PyPI `trlx` release; the PPO implementation is pinned by commit.
 
 To repair an already-created `rlhf-cuq` environment after either observed
 failure, do not recreate it. From the repository root run:

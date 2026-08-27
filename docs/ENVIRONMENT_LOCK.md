@@ -76,7 +76,8 @@ python -m pip install --no-build-isolation \
 python -m pip install --no-build-isolation --no-deps --requirement requirements/legacy-sources.txt
 python -m pip install --no-build-isolation --no-deps -e .
 python -m pip check
-python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import trlx, alpaca_farm, oasst_data"
+python scripts/validate_legacy_sources.py
+python -c "from model_training.custom_datasets.formatting import format_pairs; from model_training.models.reward_model import GPTNeoXRewardModel; from model_training.utils.utils import read_yamls; import trlx, alpaca_farm, oasst_data; assert callable(trlx.train)"
 ```
 
 Torch is installed before the remaining runtime specifically because `flash-attn==2.0.8` imports Torch while building. Build isolation is then disabled so that build sees the pinned Torch, Ninja, CMake, and packaging tools. A CUDA toolkit/compiler compatible with the selected PyTorch build is still required. This sequence is structurally installable but remains target-host-unvalidated; its first successful resolution must be frozen completely.

@@ -81,6 +81,8 @@ echo "Proxy RM: $PROXY_RM_PATH"
 echo "PPO seed: $PPO_SEED"
 echo "Plan: 2 rollouts, 1 PPO epoch, 1 optimizer update, no gold model"
 
+python scripts/validate_legacy_sources.py
+
 nvidia-smi
 python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpu', torch.cuda.get_device_name(0), 'bf16', torch.cuda.is_bf16_supported()); assert torch.cuda.is_bf16_supported(), 'The checked PPO smoke configuration requires BF16 support'"
 
