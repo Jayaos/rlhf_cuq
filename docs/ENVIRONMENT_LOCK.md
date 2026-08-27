@@ -17,6 +17,14 @@ Do not publish GPU results until a compatible host resolves this environment, pa
 | `trlx` | metadata version 0.7.0 (not the tag) | `CarperAI/trlx@3340c2f3a56d1d14fdd5f13ad575121fa26b6d92` |
 | `alpaca_farm` | 0.2.0 | `tlc4418/alpaca_farm@f92bd550130975436301ba02137b303d1eb59986` |
 
+Editable VCS checkouts must live outside the root repository's `src` tree.
+Installing from the repository root without an explicit pip `--src` placed the
+trlx checkout at `src/trlx` on Phoenix. The root editable installation also
+exposes `src`, so Python resolved that checkout root as an empty namespace and
+hid the real `src/trlx/trlx/__init__.py`. The documented Conda install uses
+`$CONDA_PREFIX/legacy-src`; the virtual-environment route uses
+`$VIRTUAL_ENV/legacy-src`.
+
 The direct source file replaces moving `trlx` and AlpacaFarm references. The selected trlx commit reports package version 0.7.0 but is not the 0.7.0 tag, so commit identity—not the version string—is authoritative.
 
 Do not move these VCS entries back into ordinary root dependencies. The pinned OA model metadata declares its own moving direct `trlx` URL, which conflicts with a SHA-pinned direct URL in modern pip. Its built wheel also contains only the top-level `model_training` package and omits imported `custom_datasets`, `models`, and `utils` subpackages. Installing the pinned source editably and with `--no-deps` retains the source tree and bypasses both defects; the separately installed runtime list supplies dependencies.
@@ -73,7 +81,9 @@ python -m pip install \
 python -m pip install --no-build-isolation \
   --constraint requirements/legacy-cu118.constraints.txt \
   --requirement requirements/legacy-runtime.txt
-python -m pip install --no-build-isolation --no-deps --requirement requirements/legacy-sources.txt
+python -m pip install --no-build-isolation --no-deps \
+  --src "$VIRTUAL_ENV/legacy-src" \
+  --requirement requirements/legacy-sources.txt
 python -m pip install --no-build-isolation --no-deps -e .
 python -m pip check
 python scripts/validate_legacy_sources.py

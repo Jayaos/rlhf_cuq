@@ -82,6 +82,7 @@ python -m pip install --no-build-isolation \
   --constraint requirements/legacy-conda.constraints.txt \
   --requirement requirements/legacy-runtime.txt
 python -m pip install --no-build-isolation --no-deps \
+  --src "$CONDA_PREFIX/legacy-src" \
   --requirement requirements/legacy-sources.txt
 python -m pip install --no-build-isolation --no-deps --editable .
 python -m pip check
@@ -158,15 +159,27 @@ upgrading `datasets` or the legacy trainer stack.
 
 If PPO reports `module 'trlx' has no attribute 'train'`, Python is not loading
 the pinned editable `CarperAI/trlx` source: that revision exports
-`trlx.train`. Repair only that source package, then validate its Git revision
-and API on the login node before submitting another GPU job:
+`trlx.train`. A validator result such as `namespace without __file__` at
+`$PROJECT_ROOT/src/trlx` means pip put the VCS checkout inside this project's
+Python package tree, where the checkout root shadows its nested `trlx` package.
+Uninstall the distribution, verify and move that exact checkout to recoverable
+scratch quarantine, then reinstall outside the project tree:
 
 ```bash
 source scripts/configure_cluster_storage.sh \
   "/storage/scratch1/0/$USER/rlhf-cuq"
 conda activate rlhf-cuq
+
+# These must identify CarperAI/trlx and the pinned 3340c2f... revision.
+git -C "$PROJECT_ROOT/src/trlx" remote get-url origin
+git -C "$PROJECT_ROOT/src/trlx" rev-parse HEAD
 python -m pip uninstall -y trlx
-python -m pip install --no-build-isolation --no-deps --editable \
+mkdir -p "$RLHF_STORAGE_ROOT/quarantine"
+mv "$PROJECT_ROOT/src/trlx" \
+  "$RLHF_STORAGE_ROOT/quarantine/trlx-shadow-20260827"
+
+python -m pip install --no-build-isolation --no-deps \
+  --src "$CONDA_PREFIX/legacy-src" --editable \
   "git+https://github.com/CarperAI/trlx.git@3340c2f3a56d1d14fdd5f13ad575121fa26b6d92#egg=trlx"
 python scripts/validate_legacy_sources.py
 python -m pip check
@@ -174,7 +187,9 @@ python -m pip check
 
 This repair does not reinstall Torch, CUDA packages, Open Assistant, or the
 trained models. Do not work around the failure by installing an arbitrary
-PyPI `trlx` release; the PPO implementation is pinned by commit.
+PyPI `trlx` release; the PPO implementation is pinned by commit. If the
+quarantine target already exists, choose a new explicit name instead of
+overwriting it.
 
 To repair an already-created `rlhf-cuq` environment after either observed
 failure, do not recreate it. From the repository root run:

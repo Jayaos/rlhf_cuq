@@ -29,9 +29,17 @@ def _module_path(module: ModuleType, package_name: str) -> Path:
     value = getattr(module, "__file__", None)
     if not value:
         locations = list(getattr(module, "__path__", ()))
+        collision_hint = ""
+        project_collision = (ROOT / "src" / package_name).resolve()
+        if any(Path(location).resolve() == project_collision for location in locations):
+            collision_hint = (
+                f"; {project_collision} is an editable checkout placed inside "
+                "the project package tree. Move it outside project/src and "
+                "reinstall with --src $CONDA_PREFIX/legacy-src"
+            )
         raise LegacySourceError(
             f"{package_name} resolved as a namespace without __file__; "
-            f"locations={locations!r}"
+            f"locations={locations!r}{collision_hint}"
         )
     return Path(value).resolve()
 

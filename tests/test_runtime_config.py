@@ -178,6 +178,10 @@ class RuntimeConfigTests(unittest.TestCase):
         for revision in expected_revisions:
             self.assertTrue(any(f"@{revision}#" in line for line in requirement_lines), revision)
 
+        readme_text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn('--src "$CONDA_PREFIX/legacy-src"', readme_text)
+        self.assertIn('mv "$PROJECT_ROOT/src/trlx"', readme_text)
+
         project_text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertNotIn("git+https://", project_text)
         runtime_text = (ROOT / "requirements" / "legacy-runtime.txt").read_text(encoding="utf-8")
@@ -195,6 +199,7 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertIn(f'("{package_name}", "{source_name}")', validator_text)
         self.assertIn('getattr(module, "train", None)', validator_text)
         self.assertIn('importlib.import_module("trlx.trlx")', validator_text)
+        self.assertIn("editable checkout placed inside", validator_text)
 
     def test_cluster_install_covers_observed_native_build_prerequisites(self) -> None:
         build_text = (ROOT / "requirements" / "legacy-build.txt").read_text(
