@@ -1,7 +1,17 @@
 # Taken and modified from Open-Assistant's model/model_training/trainer_rl.py
 
 import argparse
+import sys
 from argparse import Namespace
+from pathlib import Path
+
+
+# ``accelerate launch path/to/script.py`` exposes the script directory, not the
+# repository root, on sys.path. Add the root before importing the ``src``
+# namespace so the documented path-based cluster command works from any cwd.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import transformers
 import trlx

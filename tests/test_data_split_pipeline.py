@@ -443,6 +443,13 @@ class DataSplitPipelineTests(unittest.TestCase):
         self.assertNotIn('load_split_records(manifest_path, "D_cal"', loader_text)
         self.assertNotIn('load_split_records(manifest_path, "D_rl_test_prompts"', loader_text)
         self.assertIn("get_manifest_dataset(training_conf, mode=\"rl\")", ppo_text)
+        ppo_root_bootstrap = 'ROOT = Path(__file__).resolve().parents[2]'
+        self.assertIn(ppo_root_bootstrap, ppo_text)
+        self.assertIn("sys.path.insert(0, str(ROOT))", ppo_text)
+        self.assertLess(
+            ppo_text.index(ppo_root_bootstrap),
+            ppo_text.index("from src.data_utils.manifest_dataset_loader"),
+        )
         root_bootstrap = 'ROOT = Path(__file__).resolve().parents[3]'
         self.assertIn(root_bootstrap, rm_wrapper)
         self.assertIn("sys.path.insert(0, str(ROOT))", rm_wrapper)
