@@ -284,6 +284,12 @@ class RuntimeConfigTests(unittest.TestCase):
             job_text,
         )
         self.assertIn('--rng_seed "$RM_SEED"', job_text)
+        self.assertIn('OUTPUT_BASE="${RM_OUTPUT_BASE:-', job_text)
+        self.assertIn('OUTPUT_DIR="${OUTPUT_BASE}_seed${RM_SEED}"', job_text)
+        self.assertIn('--output_dir "$OUTPUT_BASE"', job_text)
+        self.assertIn('export WANDB_DIR="$JOB_STORAGE_ROOT/wandb"', job_text)
+        self.assertIn('CHECKSUM_DIR="${RM_CHECKSUM_DIR:-artifacts/checksums}"', job_text)
+        self.assertIn('> "$CHECKSUM_FILE"', job_text)
         self.assertIn('RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"', job_text)
         self.assertIn('RESUME_ARGS+=(--resume_from_checkpoint)', job_text)
         self.assertIn('"${RESUME_ARGS[@]}"', job_text)

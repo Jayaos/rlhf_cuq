@@ -31,11 +31,18 @@ PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not s
 RM_SEED="${SLURM_ARRAY_TASK_ID:-${RM_SEED:-1}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-OUTPUT_DIR="models/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}"
+OUTPUT_BASE="${RM_OUTPUT_BASE:-models/rm-pythia-44m-prompt-disjoint}"
+OUTPUT_DIR="${OUTPUT_BASE}_seed${RM_SEED}"
 RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"
+CHECKSUM_DIR="${RM_CHECKSUM_DIR:-artifacts/checksums}"
+CHECKSUM_FILE="$CHECKSUM_DIR/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}.sha256"
 
 if [[ ! "$RM_SEED" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: RM_SEED/SLURM_ARRAY_TASK_ID must be a positive integer: $RM_SEED" >&2
+  exit 2
+fi
+if [[ -z "$OUTPUT_BASE" || "$OUTPUT_BASE" == "/" ]]; then
+  echo "ERROR: RM_OUTPUT_BASE must name a model-output base path, not an empty path or /." >&2
   exit 2
 fi
 
@@ -65,6 +72,8 @@ export TOKENIZERS_PARALLELISM=false
 export HF_HUB_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
+export WANDB_DIR="$JOB_STORAGE_ROOT/wandb"
+mkdir -p "$WANDB_DIR"
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: ${SLURMD_NODENAME:-unknown}"
@@ -73,7 +82,9 @@ echo "Git revision: $(git rev-parse HEAD)"
 echo "Conda environment: $CONDA_PREFIX"
 echo "Scratch/cache root: $JOB_STORAGE_ROOT"
 echo "RM seed: $RM_SEED"
+echo "Output base: $OUTPUT_BASE"
 echo "Expected output: $OUTPUT_DIR"
+echo "Checksum output: $CHECKSUM_FILE"
 
 nvidia-smi
 python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpu', torch.cuda.get_device_name(0), 'bf16', torch.cuda.is_bf16_supported()); assert torch.cuda.is_bf16_supported(), 'The checked RM configuration requires BF16 support'"
@@ -190,6 +201,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/reward_modeling/training/trainer_rm_manifest.py \
   --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
   --rng_seed "$RM_SEED" \
+  --output_dir "$OUTPUT_BASE" \
   "${RESUME_ARGS[@]}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
@@ -197,12 +209,12 @@ if [[ ! -d "$OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-mkdir -p artifacts/checksums
+mkdir -p "$CHECKSUM_DIR"
 find "$OUTPUT_DIR" -type f -print0 \
   | sort -z \
   | xargs -0 sha256sum \
-  > "artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}.sha256"
+  > "$CHECKSUM_FILE"
 
 echo "PASS proxy RM seed $RM_SEED"
 echo "Checkpoint: $OUTPUT_DIR"
-echo "Checksums: artifacts/checksums/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}.sha256"
+echo "Checksums: $CHECKSUM_FILE"

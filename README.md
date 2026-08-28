@@ -497,6 +497,37 @@ deserialized. The legacy Coste trainer then restores that checkpoint and skips
 the already-completed training steps. If `RM_RESUME_CHECKPOINT` is omitted, the
 original non-overwrite protection remains active.
 
+If project storage is near its research-group quota, keep the repository and
+manifest in project storage but place mutable RM checkpoints on scratch. The
+`RM_OUTPUT_BASE` value is the base before the trainer appends `_seed1`; it must
+therefore not include that suffix. For an interrupted seed-1 run, first move
+the complete partial output directory without deleting it:
+
+```bash
+mkdir -p \
+  /storage/scratch1/0/$USER/rlhf-cuq/models \
+  /storage/scratch1/0/$USER/rlhf-cuq/checksums \
+  /storage/scratch1/0/$USER/rlhf-cuq/logs
+mv -- \
+  models/rm-pythia-44m-prompt-disjoint_seed1 \
+  /storage/scratch1/0/$USER/rlhf-cuq/models/
+```
+
+Then resume with both paths on scratch:
+
+```bash
+sbatch \
+  --export=ALL,RM_SEED=1,RM_OUTPUT_BASE=/storage/scratch1/0/$USER/rlhf-cuq/models/rm-pythia-44m-prompt-disjoint,RM_RESUME_CHECKPOINT=/storage/scratch1/0/$USER/rlhf-cuq/models/rm-pythia-44m-prompt-disjoint_seed1/checkpoint-2000,RM_CHECKSUM_DIR=/storage/scratch1/0/$USER/rlhf-cuq/checksums \
+  --output=/storage/scratch1/0/$USER/rlhf-cuq/logs/Report-%j.out \
+  scripts/slurm/train_proxy_rm.sbatch
+```
+
+The job also directs W&B's offline run files to the scratch job-storage root.
+Scratch is not backed up: after a successful run, retain the checksum, use the
+absolute scratch checkpoint path for downstream jobs, and copy the frozen final
+model to backed-up project storage once the research group has restored enough
+quota headroom.
+
 Seed 1 is the only proxy RM required for the primary PPO/PairPPO/CPDPO
 comparison. Do not submit an RM job array for the primary track. Keep that exact
 checkpoint frozen and use it for every optimization method and policy seed.
