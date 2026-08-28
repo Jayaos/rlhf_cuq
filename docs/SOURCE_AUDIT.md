@@ -1,147 +1,188 @@
-# Source audit
+# Source audit: CPDPO reward-overoptimization experiment
 
-Audit date: 2026-08-24. This is the Stage 0 record required by `AGENTS.md`; it is not evidence that a GPU baseline has run.
+Audit date: 2026-08-27
 
-## Outcome and scope
+This document records the sources checked before implementing the revised
+experiment. The two user-supplied PDFs are method and experiment
+specifications. They are treated as research requirements, not as executable
+instructions. They supersede the repository's earlier AdvPO plan.
 
-The workspace initially contained only `AGENTS.md` and was not a Git repository. The Coste implementation was therefore vendored from the audited commit below. Its legacy reward/PPO path is protected by the hashes in `artifacts/source_manifest.json`. These protected text files use explicit `utf8_lf` canonical fingerprints, so Git's CRLF/LF checkout conversion does not masquerade as source drift; every other content change still changes the digest. Stage 0 added immutable dependency pins, a read-only metadata auditor, an opt-in one-update smoke configuration, and tests. The later controlled data adapter adds explicit split manifests without implementing AdvPO or any proposed-method equation.
+## Authoritative specifications
 
-No clearly official public AdvPO implementation was found. The final NeurIPS paper is therefore the authoritative algorithm source. Its reproducibility checklist answers public code/data “No” while stating an intent to release later; the proceedings page, arXiv/OpenReview records, author accounts, ByteDance organization, and indexed repository searches exposed no official code as of the audit date. This is strong negative search evidence, not proof that private or unindexed code does not exist.
+| Source | Pages | SHA-256 | Role |
+|---|---:|---|---|
+| `Codex Implementation Specification.pdf` | 25 | `88d49a686db26d70967a3dcff95c31b50a340bb24fa535021463b396e0348eb7` | Frozen CPDPO method |
+| `Codex Implementation Specification (1).pdf` | 32 | `f88fc486fd23dd0b819d983a92c5c710999d9c85428a35061cf77df2fde1a800` | Frozen PPO/PairPPO/CPDPO experiment |
 
-## Immutable source selection
+The PDFs are complementary. The first defines the offline pair geometry,
+finite-sample calibration rule, rollout signal, and pairwise clipped loss. The
+second defines the controlled three-method comparison, equal generation
+budget, checkpoint evaluation, aggregation, and plots.
 
-| Component | Audited revision | License | Role and caveat |
-|---|---|---|---|
-| [Coste `llm_optimization`](https://github.com/tlc4418/llm_optimization/tree/416b03cc2c3c8125208679acd88891584d9eefd2) | `416b03cc2c3c8125208679acd88891584d9eefd2` | MIT | Vendored baseline. Current `main` matched the pin during the audit. |
-| [Open Assistant](https://github.com/LAION-AI/Open-Assistant/tree/e1769c102f1597cc0b53a8b915f858239d197aeb) | `e1769c102f1597cc0b53a8b915f858239d197aeb` (`v0.0.4-alpha2`) | Apache-2.0 | Supplies `model_training`, `oasst_data`, formatting, and `GPTNeoXRewardModel`. |
-| [CarperAI/trlx](https://github.com/CarperAI/trlx/tree/3340c2f3a56d1d14fdd5f13ad575121fa26b6d92) | `3340c2f3a56d1d14fdd5f13ad575121fa26b6d92` | MIT | Selected compatible legacy PPO dependency. Coste/OA previously followed moving `main`; this revision is an audit selection, not recoverable from an upstream lock. Package metadata says 0.7.0, but this commit is not the `v0.7.0` tag. |
-| [Coste AlpacaFarm fork](https://github.com/tlc4418/alpaca_farm/tree/f92bd550130975436301ba02137b303d1eb59986) | `f92bd550130975436301ba02137b303d1eb59986` | Apache-2.0 | Gold-RM class and reconstruction tooling. Coste previously followed moving `main`. |
+No v1 equation required for the online CPDPO reward path remains open. The
+total number of rollout steps is intentionally a run parameter: the experiment
+specification fixes equal horizons and checkpoint cadence, but does not select
+one numerical horizon. Full-run commands must therefore supply it explicitly;
+smoke configurations use one rollout only.
 
-`requirements/legacy-sources.txt` now uses the commit SHAs above. It installs all four source packages editably with dependency resolution disabled. This is necessary because the pinned OA model package both declares a moving direct `trlx` URL (which conflicts with a different root direct URL under pip) and builds a wheel that omits subpackages imported by this trainer. Runtime dependencies are installed separately. Modified Open Assistant and trlx-derived files remain subject to their upstream notices; Coste’s root MIT license does not replace those notices.
+## Components that remain unchanged
 
-## Papers and method provenance
+The following audited Coste/Open-Assistant/trlx environment is retained:
 
-- Original AdvPO: [NeurIPS 2024 paper](https://proceedings.neurips.cc/paper_files/paper/2024/file/94bbcb744bbada8808fda05b9d9290d6-Paper-Conference.pdf). Equations (4), (8), and (9), Sections 5.1/5.2, and appendices are original-paper claims.
-- Original Coste setup: [ICLR 2024 paper](https://proceedings.iclr.cc/paper_files/paper/2024/file/dda7f9378a210c25e470e19304cce85d-Paper-Conference.pdf) and the pinned repository.
-- Controlled adaptations planned for this repository include applying AdvPO to Coste assets, fixed prompt/reference manifests, exact response-only/global KL logging, and denser sample logs. They must be labeled adaptations.
-- Pairwise conformal geometry, nonconformity, policy-shift weighting, adaptive quantiles, and their policy objective remain proposed and unresolved. They are not implemented in Stage 0.
-
-AdvPO Eq. (4) uses individual chosen and rejected feature outer products,
-
-`M_D = lambda I + sum_i sum_{y in {chosen,rejected}} e(x_i,y)e(x_i,y)^T`.
-
-For Eq. (9), `g = mean_policy(e) - mean_reference(e)`, `B=b^2`, and `lambda_star=sqrt((g^T M_D^-1 g)/B)`. Subtracting `(1/lambda_star)e^T M_D^-1 g` from both policy and reference rewards gives aggregate proxy displacement minus `b*sqrt(g^T M_D^-1 g)`. It is not independent per-sample CI subtraction. The paper does not provide a numerical geometry regularizer, finite/distributed estimator for `g`, the zero-`g` convention, or an unambiguous reward-rescaling formula. Those are open implementation decisions.
-
-## Released assets
-
-Exact revisions, required filenames, Git blob IDs, LFS SHA-256 values, dataset row/schema expectations, and unresolved inputs are machine-readable in `artifacts/source_manifest.json`.
-
-| Asset | Revision | License/provenance status |
+| Component | Immutable revision | Use in this project |
 |---|---|---|
-| `tlc4418/pythia_1.4b_sft_policy` | `7b927d2ca0da03b81e1532a9fec1288fd4ac4d39` | No explicit Hub license metadata; Pythia/AlpacaFarm provenance does not cure the omission. |
-| `tlc4418/pythia_70m_sft` | `4f0328e68e44399767f77faaa39837e148bc6971` | No explicit Hub license metadata. This is only the base for locally training the effective 44M RM. |
-| `tlc4418/1.4b-policy_preference_data_gold_labelled` | `426ed801a0322fb15e52631cff85b17f12b4f275` | No explicit Hub license metadata; 51,383 viewer rows at audit time (49,383 train, 2,000 validation). Code must use a revision and explicit ID manifest rather than trusting counts/order. |
-| `tatsu-lab/alpaca_farm` | `e576524ca841af3c36fd6912e68e5920430928c1` | CC BY-NC 4.0; research/non-commercial restrictions apply. Explicit pinned JSON loading on Phoenix found 20,001 `unlabeled` and 2,000 `val` rows. |
-| `tatsu-lab/alpaca-farm-sft10k-wdiff` | `91b6ac09e67d4f65e87ecf0585f8790c2de7edbb` | Weight diff; AlpacaFarm terms plus the user-supplied LLaMA license apply. |
-| `tatsu-lab/alpaca-farm-reward-model-human-wdiff` | `363f1a5745895431849cd1c1f451bb837646c14f` | Weight diff; same compound licensing and provenance caveat. |
+| `tlc4418/llm_optimization` | `416b03cc2c3c8125208679acd88891584d9eefd2` | Coste data/RM/PPO baseline |
+| `LAION-AI/Open-Assistant` | `e1769c102f1597cc0b53a8b915f858239d197aeb` | `GPTNeoXRewardModel` and model-training support |
+| `CarperAI/trlx` | `3340c2f3a56d1d14fdd5f13ad575121fa26b6d92` | Existing PPO model, reference policy, optimizer, launch, and checkpoint machinery |
+| `tlc4418/alpaca_farm` | `f92bd550130975436301ba02137b303d1eb59986` | AlpacaFarm integration and offline gold evaluator |
 
-No author-released Coste 44M proxy-RM checkpoint was located. The faithful baseline must train `models/rm-pythia-44m_seed1` from the pinned 70M SFT base, then record its full checkpoint/head hashes. A third-party model must not be silently substituted.
+The complete asset revisions and file hashes remain in
+`artifacts/source_manifest.json`.
 
-The gold model is not a standalone download. Use the pinned AlpacaFarm recovery code with a legally obtained, checksummed Hugging Face LLaMA-7B base; reconstruct pinned `sft10k` first, then pinned `reward-model-human`, require its `model_sum.txt` integrity check to pass, and record the base provenance plus the complete reconstructed checkpoint checksum. AlpacaFarm’s recovery script itself omits `revision=` in Hub calls, so a reproducible wrapper is still required before gold scoring.
+The existing smoke tests established that:
 
-## Coste PPO execution trace
+- manifest-backed proxy-RM training runs and saves a valid checkpoint;
+- the single-RM Coste PPO path completes one update with finite proxy reward
+  and KL values;
+- the pinned legacy packages resolve from their expected revisions.
 
-1. `trainer_rl.py` asks the patched OA loader for RL data. OA has no `alpaca_farm` RL registration, so the local fallback loads AlpacaFarm `alpaca_instructions`: `unlabeled` for PPO and `val` for evaluation. Instruction and nonempty input are joined with a newline. No stable prompt IDs survive.
-2. OA `format_pairs(..., add_initial_reply_token=True)` emits `<|prompter|>{text}{eos}<|assistant|>`.
-3. `trlx.train` builds `PromptPipeline`. `CustomAcceleratePPOTrainer.make_experience` generates one local chunk, gathers it across ranks, calls the reward callback once on rank zero, scatters scalar rewards, and stores local rollouts.
-4. `create_reward_fn` rebuilds OA-formatted prompt/answer strings and calls one or more frozen proxy RMs. Scoring tokenizes to 776 tokens and returns raw scalar logits; saved RM mean/std are unused and the internal scoring batch is hard-coded to 32.
-5. PPO adds token KL penalties and places the clipped scalar proxy score at the terminal stored reward position. The rollout store is shuffled and reused for four PPO epochs before regeneration.
-6. Evaluation runs before the first update and every configured optimizer-step interval. It writes instructions, answers, proxy scores, and ensemble variance to JSON. Offline `gold_score` later reopens each JSON file and adds gold scores.
+CPDPO is therefore an additive extension. The source-hashed baseline files in
+`artifacts/source_manifest.json` are not edited. Ordinary historical Coste PPO
+remains available for regression checks.
 
-Gold is not supplied to `trlx.train` or the online callback. In the original entry point it runs only after training and final save. The new smoke profile explicitly skips that separate phase; the baseline default remains enabled.
+## Verified reward-model feature seam
 
-The trace above describes the unchanged legacy data route. The primary
-controlled `alpaca_farm_prompt_disjoint_v1` route instead materializes
-content-derived IDs and immutable membership files before training. It reads
-only the exact revision-verified JSON files declared for each source split and
-validates their raw counts;
-loading a whole snapshot directory is unsafe because generic discovery can
-duplicate Coste rows and mix unrelated AlpacaFarm schemas. Its RM wrapper
-supplies only `D_rm_train` and `D_rm_val`; the optional PPO branch supplies only
-`D_rl_train_prompts` and `D_rl_val_prompts`. Calibration/test/external roles
-remain outside those trainers. Leaving `data_split_manifest_path` empty still
-selects the original Coste loader for a separately labeled legacy baseline.
+At the pinned Open-Assistant revision, `GPTNeoXRewardModel` computes:
 
-The verified Coste payload also contains at least one exact repeated preference
-row. The controlled builder preserves source multiplicity for baseline
-fidelity, qualifies otherwise-identical record IDs with a deterministic
-duplicate ordinal, groups them by the same prompt ID, and records repeated
-occurrence counts in the generated manifest. It does not silently deduplicate
-or allow the copies to cross logical roles.
+```text
+hidden states -> configured mean/last pooling -> out_proj: Linear(hidden_size, 1)
+```
 
-The Phoenix Coste-native build observed 21,992 prompt IDs shared between the
-verified preference and PPO source families. This is expected: Coste's
-response pairs were generated on the AlpacaFarm prompt partitions later used
-for PPO. `coste_split_v1` therefore remains an explicitly named replication
-track with policy `allow_coste_native_and_report`; its PPO test is PPO-heldout,
-not globally prompt-heldout from the RM.
+The exact CPDPO feature is the input to `out_proj`. A forward pre-hook on that
+module retrieves the representation without changing the scalar reward path.
+For every batch the adapter must verify
 
-Owner decision on 2026-08-25 makes the globally prompt-disjoint track primary.
-A revision-pinned per-file audit found 9,691 `human_pref`, 10,000 `sft`, 9,691
-`synth_pref`, 20,001 `unlabelled`, and 2,000 `val` preference rows. The primary
-RM pool combines every preference file except `train/unlabelled.json`, giving
-31,382 pair records over 22,846 unique prompts. Its prompt-ID intersection with
-the excluded `unlabelled` source is zero. AlpacaFarm's separate 20,001-row
-`unlabeled` prompt file is reserved exclusively for PPO; the Coste/OA content
-filter accepts 19,993 prompts. The strict manifest must therefore report zero
-cross-source overlap and uses `forbid`, not an allow-and-report exception.
+```text
+model logits == F.linear(feature, out_proj.weight, out_proj.bias)
+```
 
-The strict deterministic quotas are 28,244/1,569/1,569 for RM
-train/validation/calibration and, after filtering, 15,995/1,999/1,999 for PPO
-train/validation/test. The original Coste preference `val` pairs join the RM
-pool; AlpacaFarm `val` is unused because PPO validation and test are both
-carved from `unlabeled`. All methods in the controlled comparison must use the
-same strict manifest. Results from the retained Coste-native overlap track must
-not be pooled with them.
+within a dtype-appropriate tolerance. The head bias is retained in individual
+reward logs and cancels in pair differences. Static `D_rm_train`/`D_cal`
+answers are terminated with exactly one Pythia `<|endoftext|>` token, matching
+the proxy-RM training formatter. Online rollouts retain the existing Coste
+rule, which appends that token only when generation ended or was trimmed at
+EOS; offline proxy evaluation uses the legacy evaluation convention with one
+terminal EOS.
 
-## Effective batch and step semantics
+## Verified PPO extension seam
 
-For the checked config, process count `W=1`, `num_rollouts R=4`, `chunk_size C=2`, requested train batch `T=32`, and `ppo_epochs=4`.
+The existing path is:
 
-| Quantity | General checked-code meaning | With `W=1` |
-|---|---|---:|
-| Reward callback batch | Gathered generation chunk, normally `W*C` | 2 |
-| Local/global rollout pool | Normally `R` per rank / `W*R` global | 4 / 4 |
-| Actual local update batch | `min(T, local store size)` because the final partial batch is kept | 4 |
-| Effective DDP update batch | Normally `W*4` | 4 |
-| Passes and optimizer updates per pool | Four passes; one partial loader batch per pass | 4 |
-| Pools / generations over 3,000 optimizer updates | `3000/4`; each pool has four local generations | 750 / 3,000 |
+```text
+trainer_rl.py
+  -> trlx.train(...)
+  -> CustomAcceleratePPOTrainer
+  -> PromptPipeline
+  -> make_experience()
+  -> PPORolloutStorage
+  -> CustomAccelerateRLTrainer.learn()
+```
 
-`total_steps`, evaluation intervals, and checkpoint intervals count optimizer updates, not rollout collections. `minibatch_size` defaults to requested batch 32, yet the four-element partial batch is accepted. The YAML’s `gradient_accumulation_steps: 32` is not passed to `Accelerator()`, so DeepSpeed’s resolved batch semantics require an actual target-host check. An Eq. (9) adapter attached only to the callback would see a two-sample chunk, not the four-rollout pool, and would be wrong unless the intended estimator explicitly chose that approximation.
+`CustomAcceleratePPOTrainer` already supplies policy generation, frozen
+reference-policy log probabilities, Accelerate preparation, optimizer and
+scheduler handling, checkpoint writes, and checkpoint-zero evaluation.
 
-## Exact proxy feature tensor
+The pinned `PPORLElement` cannot represent a pair or retain reference
+log-probabilities. Its default loss also computes GAE and a value loss and uses
+a token-mean reduction. Those semantics are incompatible with the method
+specification. The correct minimal extension is therefore:
 
-At the pinned OA revision, `GPTNeoXRewardModel` takes `outputs[0]`, pools according to the checkpoint configuration, and sends that pooled vector directly to `out_proj = nn.Linear(hidden_size, 1)` with bias. For the intended `pooling: last`, OA computes `attention_mask.cumsum(1).argmax(1)` and gathers that token’s final hidden state.
+- a new pair element/batch/store that never separates the two responses;
+- a new trainer subclass that reuses the working model/launch/checkpoint path;
+- a CPDPO/PairPPO loss that ignores the value head, preserves stored old and
+  reference log-probabilities, and performs sum-then-pair-average reduction;
+- a separate fair-budget PPO subclass/config that receives the same duplicated
+  prompt schedule and 2B response budget while retaining ordinary PPO/GAE.
 
-The lowest-drift future extractor is an optional forward pre-hook on `reward_model.out_proj` that captures and detaches `inputs[0]` across scoring minibatches. Its mandatory identity test is `output.logits == F.linear(feature, weight, bias)` at tight tolerance, including padding/EOS and split-batch cases. Stage 0 deliberately does not add this hook.
+## Frozen equations implemented
 
-## Paper-versus-code drift and baseline defects
+For source-ordered response pairs,
 
-| Area | Paper/protocol | Pinned code | Status |
-|---|---|---|---|
-| Coste rollout settings | 256 rollouts, chunk 32 | 4 rollouts, chunk 2 | Material debug-scale drift; do not call the checked YAML paper-faithful. |
-| Other Coste PPO values | 3,000 updates, batch 32, PPO epochs 4, LR `1e-6`, clips 0.2, max output 256 | Same headline values | Batch 32 is only a loader maximum in the checked four-rollout run. |
-| Reward handling | Paper does not report ±10 clipping | `scale_reward=false`, but proxy reward is clipped to ±10 | Must be declared. |
-| Plotted Coste KL | Sequence-summed/sample-mean `0.5*(log pi/log pi_init)^2` | `mean_kl_est` is saved as `policy/kl` | Code includes prompt tokens and does not all-reduce this estimator. Only a different k3-like metric is all-reduced. |
-| Gold configuration | AlpacaFarm `reward-model-human` specialized path | YAML says `is_alpacafarm_rm: false`; README says true | Blocker. The specialized formatter also has a missing f-string and emits literal placeholders. Do not trust either branch yet. |
-| Single-RM variance | Not a meaningful ensemble metric | `torch.empty_like` is serialized | Uninitialized garbage; do not analyze it. |
-| Eval comparability | Same samples, dense provenance needed for Section 5.1 | Stochastic eval, no prompt IDs/step/seed/checkpoint/token counts; cumulative KL only on first row | Insufficient for the target analysis. |
-| Multi-rank | Global scientific statistics required | saved KL not global; RM placement and post-training gold phase are unsafe on multiple ranks | Limit baseline validation to the audited single-process launcher until fixed/tested. |
+```text
+d_i = e(x_i, y_i^a) - e(x_i, y_i^b)
+G   = (1 / n_rm) sum_i d_i d_i^T
+lambda = 1e-3 * trace(G) / dim       (1e-6 only when trace(G) == 0)
+V   = lambda I + G
+u(d) = sqrt(d^T V^-1 d) = ||L^-1 d||_2,  V = L L^T
+```
 
-AdvPO uses 1,500 steps, batch 64, context 2,048, max generation 512, beta 0, evaluation every 100 steps, chosen response references, 30% random mislabeling, and `B` in `{1,5,10,15}`. Those values describe a separate stress/protocol track; they are not silently merged into the Coste-native baseline.
+For calibration label `ell_i` (`+1` when `a` is preferred, `-1` when `b` is
+preferred),
 
-## Required patches and acceptance state
+```text
+m_i = r_i^a - r_i^b
+s_i = max(-ell_i * m_i, 0) / (u_i + 1e-8)
+k   = min(n_cal, ceil((n_cal + 1) * (1 - alpha)))
+q_alpha = sorted_scores[k - 1], alpha = 0.10
+```
 
-Implemented setup patches are behavior-preserving by default: immutable VCS pins; explicit Python 3.10 compatibility range; selectable PPO config with the old path as default; opt-in one-update config; optional local policy/proxy/dataset snapshot overrides; optional post-training gold phase with the old `true` default; and read-only provenance tests. The manifest-backed data route is opt-in and is a declared controlled adaptation because it replaces implicit first-N/source-validation selection with the frozen logical roles.
+The threshold is fixed for the complete PPO run.
 
-Before Gate 1, separately audited patches must validate feature identity, correct/verify gold formatting and loading, replace the single-RM variance garbage with an explicitly defined field, implement response-only globally aggregated KL without relabeling historical data, add stable sample provenance, isolate checkpoints, verify terminal indexing, and test checkpoint/resume and one-rank behavior. These known defects were recorded rather than folded into Stage 0, because changing them now would make a failed baseline impossible to attribute.
+For a PPO-time pair,
+
+```text
+certified = (abs(m) / (u + 1e-8) > q_alpha) and (m != 0)
+gamma     = max(abs(m) - q_alpha * u, 0)
+R_cpdpo   = sign(m) * gamma * certified
+R_pairppo = m
+A_a = R,  A_b = -R
+```
+
+The pair objective uses clipped token probability ratios, sums over generated
+tokens for each response, averages the two orientations, and then averages
+prompt pairs. It does not use GAE, a value loss, per-response length
+normalization, global-token averaging, online threshold updates, fallback
+scalar rewards, or gold feedback.
+
+## Controlled experiment contract
+
+The reportable comparison is exactly:
+
+1. standard scalar-reward PPO;
+2. PairPPO with `R=m`;
+3. CPDPO with the fixed conformal robust margin.
+
+Every method uses the same initial policy, reference policy, proxy RM,
+manifest, seed-derived prompt schedule, optimizer settings where semantically
+compatible, B prompts per rollout, and two independently sampled responses per
+prompt. PPO flattens the resulting 2B trajectories; pair methods keep B atomic
+pairs.
+
+Gold reward is unavailable to every training entry point. A separate evaluator
+generates one response for every fixed held-out prompt/checkpoint, saves that
+response once, then scores the same response with proxy RM, gold RM, and the
+common sampled-KL evaluator. Figure 2(a) uses proxy/gold reward against rollout
+step. Figure 2(b) reuses those checkpoint records against `sqrt(max(mean_kl,0))`.
+
+## Deliberate adaptation versus original assets
+
+This is not AdvPO and no AdvPO confidence matrix, reference-response robust
+objective, or B-grid is part of the revised experiment. Coste supplies the
+assets and the validated engineering environment only. CPDPO's pair geometry
+and calibration use the existing prompt-disjoint `D_rm_train` and `D_cal`;
+online training uses `D_rl_train_prompts`; validation and final evaluation use
+held-out RL prompt roles.
+
+## Risks guarded by tests
+
+- exact reward-head reconstruction and pair bias cancellation;
+- Cholesky solve instead of a matrix inverse;
+- finite-sample quantile index and strict certification inequality;
+- pair-order antisymmetry and PairPPO/CPDPO reward identities;
+- no pair breakup in data loading;
+- exact sum-then-pair-average PPO reduction;
+- zero-certified batches remain finite and have zero pair gradient;
+- equal prompts, responses, and proxy-RM calls across methods;
+- gold symbols/checkpoints are rejected by training configuration;
+- evaluation reuses response IDs across all scorers;
+- plot code rejects CPDPO internal pair rewards as a policy-quality metric.

@@ -27,21 +27,30 @@ Use this section for the audited cluster workflow. The historical upstream instr
 | --- | --- | --- | --- |
 | Source audit and unit tests | Check source revisions, file hashes, configs, and local helpers | CPU; no model payloads | Runnable |
 | Proxy RM, seed 1 | Train the Coste 44M proxy RM from the pinned 70M SFT base | RM base + preference dataset | Runnable on one GPU; required before PPO |
-| Additional proxy-RM seeds | Optional ensemble uncertainty comparator for Section 5.1 | Same as above | Not required for the primary track; the original AdvPO diagnostic used three-member ensembles |
+| Additional proxy-RM seeds | Optional Coste ensemble study | Same as above | Not required for CPDPO; the target experiment freezes one shared seed-1 proxy RM |
 | PPO integration smoke | One optimizer update using the real 1.4B policy and one RM | Policy + prompts + structurally valid full or smoke RM | Runnable on one GPU; setup check only |
 | Checked-code single-RM PPO | Run the vendored `configs/ppo_config.yaml` on the strict split for 3,000 steps | Same as smoke | Runnable only after the smoke gate; gold must stay off |
-| Coste ensemble PPO | Reproduce Coste mean/WCO/UWO behavior | Policy + prompts + five trained RMs | Retained as an optional legacy path; out of scope for the primary AdvPO experiments |
-| Offline gold scoring | Measure reward overoptimization without exposing gold reward online | Reconstructed AlpacaFarm 7B RM | Blocked: licensed base, reconstruction pinning, and prompt formatter validation remain open |
-| AdvPO and proposed conformal methods | Section 5.1/5.2 and new uncertainty experiments | Method code and frozen equations | Not implemented yet; there is no valid launch command |
+| Coste ensemble PPO | Reproduce Coste mean/WCO/UWO behavior | Policy + prompts + five trained RMs | Retained as an optional legacy path; out of scope for the primary CPDPO experiment |
+| CPDPO offline artifacts | Build pair geometry on `D_rm_train` and fixed calibration on `D_cal` | Full seed-1 proxy RM | Implemented; GPU smoke still required |
+| PPO / PairPPO / CPDPO | Controlled reward-overoptimization comparison | Shared policy, proxy RM, prompt schedule, and response budget | Implemented as additive trainers; cluster smoke still required |
+| Offline common evaluation | Score the same saved response with proxy RM, gold RM, and sampled KL | Reconstructed AlpacaFarm 7B RM | Code implemented; licensed gold reconstruction/checksum remains an external prerequisite |
 
-The primary experiment uses one seed-1 proxy RM, frozen and shared by PPO,
-AdvPO, proposed-static, and proposed-adaptive. Coste's five-RM ensemble and
-mean/WCO/UWO optimization are not required. The original AdvPO Section 5.1
-included three-member ensemble uncertainty comparators; omitting them is a
-declared controlled adaptation, while the Section 5.2 PPO-versus-AdvPO
-comparison still requires only the one shared proxy RM.
+The revised primary experiment uses one seed-1 proxy RM, frozen and shared by
+PPO, PairPPO, and CPDPO. AdvPO is not implemented and is not a comparator.
+PPO tests the ordinary scalar objective, PairPPO isolates the effect of the
+paired objective with `R=m`, and CPDPO adds the fixed conformal robust margin.
+All three methods receive the same prompt schedule, two responses per prompt,
+and the same total optimizer-update budget.
+PairPPO and CPDPO use a pairwise PPO-style surrogate with fixed `+R/-R`
+coefficients; they are not standard scalar-reward PPO with two independent
+returns.
 
-The checked PPO YAML uses `num_rollouts=4` and `chunk_size=2`; the Coste paper reports 256 and 32. Treat this as the checked-code baseline, not a paper-faithful reproduction. Do not start a reportable large run until the one-update smoke saves and resumes a checkpoint and its KL accounting is understood. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md), [open method decisions](docs/OPEN_METHOD_DECISIONS.md), and [environment lock notes](docs/ENVIRONMENT_LOCK.md) for the acceptance gates.
+The old `configs/ppo_config.yaml` remains a regression baseline. The revised
+experiment uses `configs/ppo_config_reward_overoptimization.yaml`, 256 prompts
+and two responses per prompt, four PPO epochs, and a primary KL coefficient of
+zero. See [the source audit](docs/SOURCE_AUDIT.md), [implementation
+plan](docs/IMPLEMENTATION_PLAN.md), [decision status](docs/OPEN_METHOD_DECISIONS.md),
+and [environment lock notes](docs/ENVIRONMENT_LOCK.md).
 
 ### Cluster prerequisites
 
@@ -296,8 +305,10 @@ distinct occurrence-qualified record IDs, and counted in manifest provenance.
 The RM adapter exposes only `D_rm_train` and `D_rm_val`; the PPO adapter exposes
 only `D_rl_train_prompts` and `D_rl_val_prompts`. `D_cal`, test, and external
 validation roles cannot enter either online trainer through this adapter. The
-fixed `D_cal` is reserved for later calibration code; no conformal score or
-adaptive-update equation is selected by this pipeline.
+offline CPDPO artifact builder reads `D_cal` explicitly to compute the frozen
+finite-sample conformal threshold; `D_cal` still cannot enter proxy-RM fitting
+or online PPO rollouts. The threshold is fixed for the complete run—there is no
+adaptive update.
 
 Use the prompt-disjoint manifest route for current and future controlled
 experiments. For an exact legacy-data regression only, run the original
@@ -324,7 +335,12 @@ python scripts/download_assets.py --asset-root assets --include-gold
 python scripts/download_assets.py --asset-root assets --include-gold --verify-only
 ```
 
-This does not download LLaMA-7B and does not make gold scoring ready. The pinned AlpacaFarm recovery utility still needs a reviewed way to consume these exact local revisions, and `src/data_utils/rm_dataset_formatter.py` currently emits literal `{instruction}`/`{input_}` placeholders on its AlpacaFarm branch. Keep `--run_gold_evaluation false` until that formatter is fixed against a pinned fixture and reconstructed `model_sum.txt` validation passes. Never commit or redistribute licensed/reconstructed weights.
+This does not download LLaMA-7B or reconstruct the gold RM. The revised
+evaluator bypasses the broken legacy Alpaca formatting branch and uses the
+pinned AlpacaFarm `v0_inputs_noinputs.json` templates, with a regression test
+that rejects literal placeholders. Gold evaluation must still wait until the
+licensed base is supplied and the reconstructed `model_sum.txt` validation
+passes. Never commit or redistribute licensed/reconstructed weights.
 
 ### Experiment 1: train proxy reward model(s)
 
@@ -372,7 +388,7 @@ currently requests 16 GiB CPU RAM for 20 minutes.
 
 This checkpoint is deliberately trained on too little data. It may be used only
 for the one-update PPO integration smoke selected by `baseline_smoke`; it must
-not be used for checked-code/full PPO, AdvPO, method comparisons, or reported
+not be used for checked-code/full PPO, CPDPO method comparisons, or reported
 results. The job refuses to overwrite a nonempty prior smoke directory; move
 that directory aside if a failed run must be repeated.
 
@@ -463,13 +479,12 @@ The job refuses to run outside Slurm, confirms CUDA and BF16 support, refuses
 to overwrite a nonempty seed output, trains the RM, and writes checkpoint
 hashes under `artifacts/checksums/`.
 
-Seed 1 is the only proxy RM required for the primary AdvPO Section 5.1/5.2
-adaptation. Do not submit an RM job array for the primary track. Keep that exact
+Seed 1 is the only proxy RM required for the primary PPO/PairPPO/CPDPO
+comparison. Do not submit an RM job array for the primary track. Keep that exact
 checkpoint frozen and use it for every optimization method and policy seed.
 
-If a three-member ensemble uncertainty comparator is added later for a closer
-Section 5.1 diagnostic, train two additional RMs as a separately declared
-optional comparison. This is not the Coste five-member ensemble experiment.
+If a Coste ensemble study is added later, train additional RMs as a separately
+declared optional comparison. It is not part of the CPDPO experiment.
 The Slurm script supports independent array tasks, for example:
 
 ```bash
@@ -534,7 +549,178 @@ models/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1
 
 This uses two rollouts, one PPO epoch, one optimizer update, two evaluation prompts, and no gold load. It is an integration test, not a scientific experiment. The smoke YAML explicitly sets `tracker: null`: pinned trlx otherwise defaults to online W&B and fails in a noninteractive batch job without an API key. A proxy-RM smoke checkpoint validates loading, reward callback execution, PPO update, and artifact writing, but it says nothing about reward quality or overoptimization. Success ends with `PASS one-update PPO pipeline smoke`; the job checks finite proxy/KL values, the final policy, and `runs/ppo_smoke_checkpoints/checkpoint_1/hf_model`, then writes checksums under `artifacts/checksums/`. It refuses to overwrite nonempty `runs/ppo_smoke`, `runs/ppo_smoke_checkpoints`, or the legacy `output.txt` prompt preview. Move prior artifacts aside before retrying. Repeat the PPO smoke with the full seed-1 RM before any full run. The legacy evaluator can still generate up to 256 tokens even though smoke rollouts are capped at 16.
 
-### Experiment 3: checked-code PPO baselines on the strict split
+### Revised target experiment: PPO versus PairPPO versus CPDPO
+
+The new pipeline deliberately reuses the full seed-1 proxy RM and the policy,
+manifest, Accelerate launcher, optimizer, reference-policy, and checkpoint
+machinery exercised by the earlier smoke tests. It adds a paired rollout store
+and loss instead of modifying the baseline trainer.
+
+#### 1. Build the fixed CPDPO artifacts
+
+This is a one-time GPU job for a particular proxy-RM checkpoint and split
+manifest:
+
+```bash
+sbatch scripts/slurm/prepare_cpdpo_artifacts.sbatch
+```
+
+It reads only `D_rm_train` and `D_cal` and writes:
+
+```text
+artifacts/cpdpo/proxy_rm_seed1/
+  pair_geometry.pt
+  pair_geometry_metadata.json
+  calibration_scores.pt
+  conformal_calibration.json
+```
+
+The geometry is the full normalized pair-difference Gram matrix with the
+specified trace-scaled ridge and a float64 Cholesky factor. The calibration
+uses `alpha=0.10`, the non-interpolated finite-sample order statistic, and one
+fixed `q_alpha` for every CPDPO policy update. The job refuses to overwrite an
+existing artifact directory.
+
+The main run uses `--geometry-mode full --reward-variant robust_margin`.
+Required ablations are explicit rather than alternate defaults: build a
+separate artifact directory with `prepare_cpdpo_artifacts.py --geometry-mode
+unit` for the `u=1` ablation, and launch CPDPO with `--reward-variant
+sign_only` for the sign-only certified update. Never mix a unit-geometry
+calibration artifact with a full-geometry run; fingerprint validation rejects
+that mismatch.
+
+#### 2. Materialize the shared prompt schedules
+
+The experiment specification does not freeze a numerical rollout horizon, so
+choose it before launching and use the same value for every method and seed.
+The following example uses 100 rollout steps and the minimum three seeds:
+
+```bash
+ROLLOUT_STEPS=100
+for SEED in 1 2 3; do
+  python scripts/build_prompt_schedule.py \
+    --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
+    --output "artifacts/prompt_schedules/seed_${SEED}.jsonl" \
+    --base-seed "$SEED" \
+    --rollout-steps "$ROLLOUT_STEPS" \
+    --prompts-per-rollout 256
+done
+```
+
+Each schedule is shuffled deterministically with `base_seed+30000` and stores
+prompt IDs. Every trainer expands each row to adjacent `a` and `b` generations.
+PPO flattens the resulting 512 trajectories. PairPPO and CPDPO retain 256
+atomic pairs. With batch units 64 responses for PPO and 32 pairs for the pair
+methods, all branches perform 32 optimizer updates per rollout.
+
+#### 3. Run the one-rollout three-method smoke
+
+Create its tiny schedule once:
+
+```bash
+python scripts/build_prompt_schedule.py \
+  --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
+  --output artifacts/prompt_schedules/smoke_seed_1.jsonl \
+  --base-seed 1 \
+  --rollout-steps 1 \
+  --prompts-per-rollout 2
+
+sbatch --array=0-2 scripts/slurm/smoke_reward_overoptimization.sbatch
+```
+
+Array indices map to `0=ppo`, `1=pairppo`, and `2=cpdpo`. This checks the real
+policy/proxy models, two independent responses, the ordinary PPO control, the
+pair store/loss, CPDPO artifact validation, and checkpoint output. It never
+loads the gold RM and is not reportable data.
+
+#### 4. Launch the full controlled matrix
+
+After the three smoke tasks pass, launch three methods by three seeds:
+
+```bash
+sbatch --export=ALL,ROLLOUT_STEPS=100 --array=0-8 \
+  scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+Change `100` only as a predeclared common design decision. Do not copy the old
+AdvPO 1,500-step horizon: AdvPO is not part of this experiment, and the new
+specification intentionally leaves the horizon configurable. The full script
+uses 256 prompts, two responses per prompt, temperature/top-p 1.0, 128 new
+tokens, clip epsilon 0.2, four PPO epochs, and `beta=0.0`. A later practical
+track may use one common nonzero beta across all methods.
+
+Training entry points do not accept a gold-model argument. Run metadata records
+all four seed namespaces, response/proxy-call budgets, prompt schedule hash,
+initial/reference/proxy fingerprints, and CPDPO artifact fingerprints.
+PairPPO and CPDPO additionally write atomic
+`pair_rollouts/rollout_XXXXXX.pt` records containing both response token
+sequences and masks, old/reference token log-probabilities, frozen pair
+signals, behavior-policy step, and proxy/geometry/calibration fingerprints.
+
+Each rollout-boundary checkpoint also saves the Accelerator model, optimizer,
+scheduler, and RNG state plus `experiment_state.json`. To resume one interrupted
+array task, resubmit only that task with the same arguments and its checkpoint:
+
+```bash
+sbatch --export=ALL,ROLLOUT_STEPS=100,CPDPO_RESUME_CHECKPOINT="$PWD/outputs/reward_overoptimization/seed_1/cpdpo/checkpoints/checkpoint_0320" \
+  --array=2 scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+The checkpoint must be the latest checkpoint in that exact method/seed output directory. Resume
+rejects a changed horizon, code revision, schedule, manifest, policy, proxy RM,
+geometry, or calibration. If the interrupted process logged rollouts newer than
+the restored checkpoint, their JSONL is first copied to a timestamped
+`rollout_metrics.before_resume_*.jsonl` archive and the active log is rewound to
+the checkpoint boundary. Completed runs cannot be resumed.
+
+#### 5. Evaluate checkpoints offline
+
+Gold scoring is a separate job/process after the licensed AlpacaFarm gold RM
+has been reconstructed and validated. For each method/seed run:
+
+```bash
+python scripts/evaluate_policy_checkpoints.py \
+  --run-dir outputs/reward_overoptimization/seed_1/cpdpo \
+  --initial-policy assets/initial_sft_policy \
+  --reference-policy assets/initial_sft_policy \
+  --proxy-rm models/rm-pythia-44m-prompt-disjoint_seed1 \
+  --gold-rm /absolute/path/to/reward-model-human \
+  --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
+  --split D_rl_val_prompts
+```
+
+The command evaluates checkpoint 0 and every stored rollout-boundary
+checkpoint. For each checkpoint it generates one fresh response per fixed
+prompt, persists that response before scoring, and attaches proxy reward, gold
+reward, and sampled current/reference KL to that exact response ID. Use
+`D_rl_val_prompts` for trajectory/model selection and reserve
+`D_rl_test_prompts` for the final locked evaluation.
+
+After evaluating all three methods and at least three identical seeds:
+
+```bash
+python scripts/aggregate_and_plot_reward_overoptimization.py \
+  --output-root outputs/reward_overoptimization \
+  --split D_rl_val_prompts
+```
+
+This consolidates the raw per-run records into
+`evaluations/checkpoint_metrics.jsonl` and `.csv`, produces
+`mean_by_checkpoint.csv`, `mean_by_kl.csv`, and Figure 2-style PDF/PNG curves
+for proxy/gold reward versus rollout step and versus square-root evaluation KL.
+Plotting rejects internal PairPPO/CPDPO pair rewards as policy quality metrics.
+
+For the complete three-method/three-seed validation matrix, submit the checked
+offline evaluator rather than running the Python command on a login node:
+
+```bash
+sbatch --export=ALL,GOLD_RM_PATH=/absolute/path/to/reward-model-human \
+  --array=0-8 scripts/slurm/evaluate_reward_overoptimization.sbatch
+```
+
+Set `CPDPO_EVAL_SPLIT=D_rl_test_prompts` only for the final locked evaluation.
+
+### Legacy experiment: checked-code PPO baseline on the strict split
 
 Run the single-RM checked-code baseline only after the smoke gate:
 
@@ -550,7 +736,7 @@ accelerate launch --config_file configs/accelerate_config_simple.yaml \
 This selects `configs/ppo_config.yaml` (3,000 steps, four rollouts, chunk size two, four PPO epochs, KL coefficient 0.1). Do not describe it as a faithful paper reproduction. The legacy DeepSpeed launcher remains unvalidated because its `auto` batch fields are not wired cleanly through the custom trainer, so the commands here deliberately use the one-process launcher.
 
 The following is retained only as a Coste compatibility example. Do not run it
-for the primary AdvPO Section 5.1/5.2 track. If a later study explicitly adds
+for the primary CPDPO track. If a later study explicitly adds
 the five-member Coste ensemble-optimization baselines, the configured
 ensemble-mean run is:
 

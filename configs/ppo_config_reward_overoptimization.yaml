@@ -1,0 +1,65 @@
+# Shared template for PPO, PairPPO, and CPDPO. The experiment entry point
+# resolves method-specific batch units while preserving 2B responses and an
+# equal number of optimizer updates per rollout.
+train:
+  seq_length: 648
+  epochs: 1
+  total_steps: 32
+  batch_size: 64
+  checkpoint_interval: 320
+  eval_interval: 320
+  checkpoint_dir: outputs/reward_overoptimization/checkpoints
+  pipeline: "PromptPipeline"
+  trainer: "ExperimentAcceleratePPOTrainer"
+  trainer_kwargs: {}
+  tracker: null
+  save_best: false
+  save_optimizer: true
+
+model:
+  model_path:
+  model_arch_type: causal
+  num_layers_unfrozen: 2
+
+tokenizer:
+  tokenizer_path:
+  truncation_side: "left"
+  padding_side: "left"
+
+optimizer:
+  name: "adamw"
+  kwargs:
+    lr: 1.0e-6
+    betas: [0.9, 0.95]
+    eps: 1.0e-8
+    weight_decay: 1.0e-6
+
+scheduler:
+  name: "cosine_annealing"
+  kwargs:
+    T_max: 32
+    eta_min: 1.0e-7
+
+method:
+  name: "ppoconfig"
+  num_rollouts: 512
+  chunk_size: 64
+  ppo_epochs: 4
+  init_kl_coef: 0.0
+  target: null
+  horizon: 10000
+  gamma: 1
+  lam: 0.95
+  cliprange: 0.2
+  cliprange_value: 0.2
+  vf_coef: 1
+  scale_reward: false
+  ref_mean: null
+  ref_std: null
+  cliprange_reward: null
+  gen_kwargs:
+    max_new_tokens: 128
+    top_k: 0
+    top_p: 1.0
+    do_sample: true
+    temperature: 1.0
