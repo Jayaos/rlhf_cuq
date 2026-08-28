@@ -186,3 +186,6 @@ held-out RL prompt roles.
 - gold symbols/checkpoints are rejected by training configuration;
 - evaluation reuses response IDs across all scorers;
 - plot code rejects CPDPO internal pair rewards as a policy-quality metric.
+- reduced-data artifact builds are explicitly tagged `smoke`, require a
+  smoke-only trainer opt-in, and are rejected by the full scientific launch;
+  full artifacts continue to consume complete manifest roles.

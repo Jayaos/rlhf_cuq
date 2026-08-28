@@ -135,7 +135,8 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         self.assertEqual(values[0]["prompt"], values[1]["prompt"])
 
     def test_training_cli_does_not_accept_gold_checkpoint(self) -> None:
-        tree = ast.parse((ROOT / "src/ppo/trainer_reward_overoptimization.py").read_text(encoding="utf-8"))
+        trainer_path = ROOT / "src/ppo/trainer_reward_overoptimization.py"
+        tree = ast.parse(trainer_path.read_text(encoding="utf-8"))
         option_strings = {
             argument.value
             for call in ast.walk(tree)
@@ -144,6 +145,17 @@ class CPDPOExperimentContractTests(unittest.TestCase):
             if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
         }
         self.assertFalse(any("gold" in option.lower() for option in option_strings))
+
+    def test_smoke_artifacts_require_an_explicit_smoke_only_training_opt_in(self) -> None:
+        smoke_job = (ROOT / "scripts/slurm/smoke_reward_overoptimization.sbatch").read_text(encoding="utf-8")
+        full_job = (ROOT / "scripts/slurm/train_reward_overoptimization.sbatch").read_text(encoding="utf-8")
+        artifact_job = (ROOT / "scripts/slurm/prepare_cpdpo_smoke_artifacts.sbatch").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--allow-smoke-artifacts", smoke_job)
+        self.assertNotIn("--allow-smoke-artifacts", full_job)
+        self.assertIn("--max-rm-pairs", artifact_job)
+        self.assertIn("--max-cal-pairs", artifact_job)
 
     def test_plot_records_reject_internal_pair_reward(self) -> None:
         record = {
@@ -208,6 +220,22 @@ class CPDPOExperimentContractTests(unittest.TestCase):
     "torch/trlx are validated in the pinned cluster environment",
 )
 class CPDPOTorchTests(unittest.TestCase):
+    def test_smoke_artifact_scope_is_rejected_unless_explicitly_allowed(self) -> None:
+        from src.cpdpo.pair_reward import PairRewardCallback
+
+        callback = PairRewardCallback.__new__(PairRewardCallback)
+        callback.artifact_scope = None
+        callback.allow_smoke_artifacts = False
+        with self.assertRaisesRegex(ValueError, "Smoke-only"):
+            callback._validate_artifact_scope({"artifact_scope": "smoke"}, "test")
+
+        callback.artifact_scope = None
+        callback.allow_smoke_artifacts = True
+        callback._validate_artifact_scope({"artifact_scope": "smoke"}, "test")
+        self.assertEqual(callback.artifact_scope, "smoke")
+        with self.assertRaisesRegex(ValueError, "scopes do not match"):
+            callback._validate_artifact_scope({"artifact_scope": "scientific"}, "test")
+
     def test_low_certification_warning_after_three_rollouts(self) -> None:
         from src.ppo.custom_trlx_trainers import custom_accelerate_pair_ppo_trainer as module
 

@@ -49,6 +49,9 @@ EXTRA_ARGS=()
 if [[ "$METHOD" == "cpdpo" ]]; then
   EXTRA_ARGS+=(--geometry "$ARTIFACT_DIR/pair_geometry.pt")
   EXTRA_ARGS+=(--calibration "$ARTIFACT_DIR/conformal_calibration.json")
+  # The smoke path may deliberately use reduced-data artifacts. Full training
+  # never passes this opt-in and therefore rejects them.
+  EXTRA_ARGS+=(--allow-smoke-artifacts)
 fi
 
 srun accelerate launch --config_file configs/accelerate_config_simple.yaml \

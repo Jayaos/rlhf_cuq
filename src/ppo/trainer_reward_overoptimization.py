@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-variant", choices=["robust_margin", "sign_only"], default="robust_margin")
     parser.add_argument("--geometry-mode", choices=["full", "unit"], default="full")
     parser.add_argument(
+        "--allow-smoke-artifacts",
+        action="store_true",
+        help="Permit explicitly tagged reduced-data artifacts; valid only for a CPDPO smoke run",
+    )
+    parser.add_argument(
         "--resume-from-checkpoint",
         help="Resume an interrupted run from one of its rollout-boundary Accelerator checkpoints",
     )
@@ -117,6 +122,8 @@ def main() -> None:  # noqa: C901
         raise ValueError("Only CPDPO may load geometry/calibration artifacts")
     if args.method != "cpdpo" and (args.reward_variant != "robust_margin" or args.geometry_mode != "full"):
         raise ValueError("CPDPO ablation flags cannot be applied to PPO or PairPPO")
+    if args.allow_smoke_artifacts and args.method != "cpdpo":
+        raise ValueError("--allow-smoke-artifacts is valid only for CPDPO")
 
     schedule_path = Path(args.prompt_schedule).resolve()
     training_conf = merged_training_config(args.configs)
@@ -177,6 +184,7 @@ def main() -> None:  # noqa: C901
             geometry_path=args.geometry,
             calibration_path=args.calibration,
             data_manifest_path=str(data_manifest),
+            allow_smoke_artifacts=args.allow_smoke_artifacts,
         )
     trlx_config.method.chunk_size = args.pair_chunk_size
     if trlx_config.method.chunk_size % 2:
@@ -299,6 +307,7 @@ def main() -> None:  # noqa: C901
         "proxy_rm_fingerprint": proxy_rm_fingerprint,
         "code_revision": code_revision,
         "gold_training_access": False,
+        "smoke_artifacts_allowed": args.allow_smoke_artifacts,
         "pair_method": pair_config.to_dict() if pair_config else None,
         "pair_artifacts": pair_artifacts,
         "trlx_config": metadata_trlx_config,

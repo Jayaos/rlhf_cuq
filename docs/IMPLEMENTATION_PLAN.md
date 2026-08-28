@@ -40,6 +40,9 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   dtype, code-revision, and artifact fingerprints.
 - Refuse overwrite unless explicitly requested; verify existing artifacts on
   resume.
+- Provide a deterministic 64-pair/64-pair smoke-only path for fast integration
+  checks. Tag every reduced artifact and reject it from scientific training by
+  default.
 
 ## 5. Add fair experiment trainers — done (cluster smoke pending)
 

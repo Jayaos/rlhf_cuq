@@ -37,8 +37,25 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--batch-size", type=int, default=64)
     value.add_argument("--device", default="cuda:0")
     value.add_argument("--geometry-mode", choices=["full", "unit"], default="full")
+    value.add_argument(
+        "--max-rm-pairs",
+        type=positive_int,
+        help="Use only this manifest-order prefix of D_rm_train and mark the artifacts smoke-only",
+    )
+    value.add_argument(
+        "--max-cal-pairs",
+        type=positive_int,
+        help="Use only this manifest-order prefix of D_cal and mark the artifacts smoke-only",
+    )
     value.add_argument("--overwrite", action="store_true")
     return value
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
 
 
 def prompt_text(row: dict) -> str:
@@ -80,6 +97,18 @@ def main() -> None:
     verify_split_manifest(manifest)
     rm_rows = load_split_records(manifest, "D_rm_train", expected_kind="preference")
     cal_rows = load_split_records(manifest, "D_cal", expected_kind="preference")
+    available_rm = len(rm_rows)
+    available_cal = len(cal_rows)
+    artifact_scope = "smoke" if args.max_rm_pairs is not None or args.max_cal_pairs is not None else "scientific"
+    if args.max_rm_pairs is not None:
+        rm_rows = rm_rows[: args.max_rm_pairs]
+    if args.max_cal_pairs is not None:
+        cal_rows = cal_rows[: args.max_cal_pairs]
+    if artifact_scope == "smoke":
+        print(
+            "WARNING: building smoke-only CPDPO artifacts from deterministic manifest-order prefixes; "
+            "these artifacts are not valid for scientific training"
+        )
     scorer = load_proxy_feature_scorer(str(proxy_rm), device=args.device, batch_size=args.batch_size * 2)
 
     geometry_path = output / "pair_geometry.pt"
@@ -103,6 +132,7 @@ def main() -> None:
             "n_rm": 0,
             "dtype": "not_applicable",
         }
+    geometry_state["artifact_scope"] = artifact_scope
     atomic_torch_save(geometry_path, geometry_state, args.overwrite)
     geometry_fingerprint = sha256_file(geometry_path)
 
@@ -115,6 +145,14 @@ def main() -> None:
         "data_manifest_sha256": sha256_file(manifest),
         "feature_extraction": "input_to_GPTNeoXRewardModel.out_proj",
         "pair_orientation": "source_answer_a_minus_source_answer_b",
+        "artifact_scope": artifact_scope,
+        "data_selection": (
+            "complete_manifest_roles"
+            if artifact_scope == "scientific"
+            else "deterministic_manifest_order_prefix_for_smoke_only"
+        ),
+        "available_n_rm": available_rm,
+        "available_n_cal": available_cal,
         "code_revision": git_revision(ROOT),
     }
     geometry_metadata = {
@@ -156,6 +194,7 @@ def main() -> None:
         scores_path,
         {
             "schema_version": "1.0.0",
+            "artifact_scope": artifact_scope,
             "labels": labels_tensor,
             "margins": margins_tensor,
             "uncertainties": uncertainty_tensor,
@@ -189,11 +228,15 @@ def main() -> None:
     atomic_write_json(output / "conformal_calibration.json", calibration, overwrite=args.overwrite)
     print(
         f"PASS geometry: {geometry_path} mode={args.geometry_mode} "
+        f"scope={artifact_scope} "
         f"n={geometry.n_rm if geometry is not None else 0} "
         f"d={geometry.dimension if geometry is not None else geometry_state['dimension']} "
         f"ridge={geometry.ridge if geometry is not None else None}"
     )
-    print(f"PASS calibration: n={scores.numel()} rank={rank} q_alpha={q_alpha.item()}")
+    print(
+        f"PASS calibration: scope={artifact_scope} n={scores.numel()} "
+        f"rank={rank} q_alpha={q_alpha.item()}"
+    )
 
 
 if __name__ == "__main__":

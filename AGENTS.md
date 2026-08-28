@@ -324,6 +324,7 @@ scripts/
   evaluate_policy_checkpoints.py
   aggregate_and_plot_reward_overoptimization.py
   slurm/prepare_cpdpo_artifacts.sbatch
+  slurm/prepare_cpdpo_smoke_artifacts.sbatch
   slurm/smoke_reward_overoptimization.sbatch
   slurm/train_reward_overoptimization.sbatch
 ```

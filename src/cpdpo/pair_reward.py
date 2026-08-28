@@ -26,6 +26,7 @@ class PairRewardCallback:
         geometry_path: str | None = None,
         calibration_path: str | None = None,
         data_manifest_path: str | None = None,
+        allow_smoke_artifacts: bool = False,
     ):
         self.config = config
         self.proxy_rm_path = str(Path(proxy_rm_path).resolve())
@@ -39,6 +40,8 @@ class PairRewardCallback:
         self.geometry_metadata_fingerprint: str | None = None
         self.calibration_fingerprint: str | None = None
         self.calibration_scores_fingerprint: str | None = None
+        self.artifact_scope: str | None = None
+        self.allow_smoke_artifacts = bool(allow_smoke_artifacts)
         self.q_alpha = 0.0
         self.data_manifest_path = str(Path(data_manifest_path).resolve()) if data_manifest_path else None
         self.data_manifest_fingerprint = (
@@ -51,6 +54,7 @@ class PairRewardCallback:
             if self.data_manifest_path is None:
                 raise ValueError("CPDPO requires the expected data manifest for artifact validation")
             geometry_state = torch.load(geometry_path, map_location="cpu")
+            self._validate_artifact_scope(geometry_state, "pair geometry state")
             if geometry_state.get("geometry_mode") != config.geometry_mode:
                 raise ValueError("Geometry artifact mode does not match the CPDPO configuration")
             if config.geometry_mode == "full":
@@ -77,6 +81,7 @@ class PairRewardCallback:
             raise ValueError("PairPPO must not load CPDPO geometry/calibration artifacts")
 
     def _validate_calibration(self, value: dict) -> None:
+        self._validate_artifact_scope(value, "conformal calibration")
         if value.get("schema_version") != "1.0.0":
             raise ValueError("Unsupported conformal calibration schema")
         if value.get("alpha") != self.config.alpha or value.get("epsilon") != self.config.epsilon:
@@ -93,6 +98,7 @@ class PairRewardCallback:
             raise ValueError("Calibration artifact was built from a different data manifest")
 
     def _validate_geometry_metadata(self, value: dict) -> None:
+        self._validate_artifact_scope(value, "pair geometry metadata")
         if value.get("schema_version") != "1.0.0" or value.get("source_role") != "D_rm_train":
             raise ValueError("Invalid pair geometry metadata schema or source role")
         if value.get("geometry_fingerprint") != self.geometry_fingerprint:
@@ -105,6 +111,23 @@ class PairRewardCallback:
             raise ValueError("Pair geometry was built from a different data manifest")
         if value.get("geometry") != self.config.geometry_mode:
             raise ValueError("Pair geometry metadata mode does not match the run")
+
+    def _validate_artifact_scope(self, value: dict, source: str) -> None:
+        # Artifacts created before the smoke-only path existed were necessarily
+        # full-role artifacts, so a missing field is backward-compatible with
+        # the scientific scope.
+        scope = value.get("artifact_scope", "scientific")
+        if scope not in {"scientific", "smoke"}:
+            raise ValueError(f"Unsupported CPDPO artifact scope in {source}: {scope}")
+        if self.artifact_scope is None:
+            self.artifact_scope = scope
+        elif scope != self.artifact_scope:
+            raise ValueError("CPDPO geometry and calibration artifact scopes do not match")
+        if scope == "smoke" and not self.allow_smoke_artifacts:
+            raise ValueError(
+                "Smoke-only CPDPO artifacts cannot be used for scientific training; "
+                "pass --allow-smoke-artifacts only in a smoke job"
+            )
 
     def __call__(self, samples, prompts, outputs, eval=False, **_kwargs):
         rewards, _features = self.scorer.score(list(prompts), list(outputs), evaluation=bool(eval))
@@ -152,6 +175,7 @@ class PairRewardCallback:
             "geometry_metadata_fingerprint": self.geometry_metadata_fingerprint,
             "calibration_fingerprint": self.calibration_fingerprint,
             "calibration_scores_fingerprint": self.calibration_scores_fingerprint,
+            "artifact_scope": self.artifact_scope,
             "data_manifest_fingerprint": self.data_manifest_fingerprint,
             "q_alpha": self.q_alpha,
         }

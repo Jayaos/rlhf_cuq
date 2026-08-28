@@ -615,7 +615,29 @@ methods, all branches perform 32 optimizer updates per rollout.
 
 #### 3. Run the one-rollout three-method smoke
 
-Create its tiny schedule once:
+For the fastest end-to-end check, use the proxy RM produced by the earlier RM
+smoke and build deliberately reduced CPDPO artifacts. This scores only 64
+`D_rm_train` pairs and 64 `D_cal` pairs instead of all 29,813 pairs:
+
+```bash
+SMOKE_RM=models/rm-pythia-44m-prompt-disjoint-smoke_seed1
+SMOKE_ARTIFACTS=artifacts/cpdpo/proxy_rm_smoke_seed1_quick
+SMOKE_OUTPUT=outputs/reward_overoptimization_quick_smoke
+
+ARTIFACT_JOB=$(sbatch --parsable \
+  --export=ALL,CPDPO_PROXY_RM_PATH="$SMOKE_RM",CPDPO_ARTIFACT_DIR="$SMOKE_ARTIFACTS" \
+  scripts/slurm/prepare_cpdpo_smoke_artifacts.sbatch)
+ARTIFACT_JOB=${ARTIFACT_JOB%%;*}
+echo "CPDPO smoke artifact job: $ARTIFACT_JOB"
+```
+
+The reduced artifacts carry `artifact_scope: smoke`. The full experiment job
+rejects them; only the smoke trainer passes the explicit
+`--allow-smoke-artifacts` opt-in. They test loading, feature extraction,
+geometry, Cholesky factorization, calibration, and fingerprint validation but
+are not statistically meaningful.
+
+Create the tiny one-rollout schedule once:
 
 ```bash
 python scripts/build_prompt_schedule.py \
@@ -625,13 +647,25 @@ python scripts/build_prompt_schedule.py \
   --rollout-steps 1 \
   --prompts-per-rollout 2
 
-sbatch --array=0-2 scripts/slurm/smoke_reward_overoptimization.sbatch
+sbatch \
+  --dependency=afterok:"$ARTIFACT_JOB" \
+  --array=0-2 \
+  --export=ALL,CPDPO_PROXY_RM_PATH="$SMOKE_RM",CPDPO_ARTIFACT_DIR="$SMOKE_ARTIFACTS",CPDPO_SMOKE_OUTPUT_ROOT="$SMOKE_OUTPUT" \
+  scripts/slurm/smoke_reward_overoptimization.sbatch
 ```
 
 Array indices map to `0=ppo`, `1=pairppo`, and `2=cpdpo`. This checks the real
 policy/proxy models, two independent responses, the ordinary PPO control, the
 pair store/loss, CPDPO artifact validation, and checkpoint output. It never
 loads the gold RM and is not reportable data.
+
+For a generic-GPU FP16 RM smoke checkpoint, set `SMOKE_RM` to
+`models/rm-pythia-44m-prompt-disjoint-smoke-fp16_seed1`. To test only CPDPO,
+submit `--array=2`. Each retry must use empty artifact and output directories;
+the jobs intentionally refuse to overwrite previous smoke evidence.
+
+After this fast check passes, repeat the same one-rollout matrix with the full
+seed-1 RM and the full artifacts from step 1 before starting reportable runs.
 
 #### 4. Launch the full controlled matrix
 
