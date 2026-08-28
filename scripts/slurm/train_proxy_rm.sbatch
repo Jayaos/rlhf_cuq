@@ -10,8 +10,9 @@
 #SBATCH -J proxy_rm_pythia_44m
 #SBATCH --account=gts-yxie77-paid
 #SBATCH --mem=32G
-#SBATCH -t60
-#SBATCH --gres=gpu:1 -C A100
+#SBATCH --time=04:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --constraint="A100|H100|H200"
 #SBATCH -qinferno
 #SBATCH -o Report-%j.out
 #SBATCH --mail-type=ALL

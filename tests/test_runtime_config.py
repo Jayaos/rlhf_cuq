@@ -267,11 +267,13 @@ class RuntimeConfigTests(unittest.TestCase):
         for directive in (
             "#SBATCH --account=gts-yxie77-paid",
             "#SBATCH --mem=32G",
-            "#SBATCH --gres=gpu:1 -C A100",
+            "#SBATCH --time=04:00:00",
+            "#SBATCH --gres=gpu:1",
+            '#SBATCH --constraint="A100|H100|H200"',
             "#SBATCH -qinferno",
         ):
             self.assertIn(directive, job_text)
-        self.assertNotIn("-C H200", job_text)
+        self.assertNotIn("#SBATCH --gres=gpu:1 -C A100", job_text)
         self.assertIn('[[ -z "${SLURM_JOB_ID:-}" ]]', job_text)
         self.assertIn("source scripts/configure_cluster_storage.sh", job_text)
         self.assertIn("assert torch.cuda.is_available()", job_text)

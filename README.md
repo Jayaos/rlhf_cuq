@@ -445,24 +445,24 @@ find models/rm-pythia-44m-prompt-disjoint_seed1 -type f -print0 \
 The repository includes a Phoenix Slurm job for this full GPU step. From the
 repository root on a login node, activate the environment, use `pace-quota` to
 confirm that the checked-in `gts-yxie77-paid` account is available, and submit
-seed 1. The current 60-minute request may be too short for the full five-epoch
-run, so the command below safely overrides only its wall time:
+seed 1:
 
 ```bash
 conda activate rlhf-cuq
 cd "$PROJECT_ROOT"
 pace-quota
-sbatch --time=04:00:00 scripts/slurm/train_proxy_rm.sbatch
+sbatch scripts/slurm/train_proxy_rm.sbatch
 ```
 
-The checked-in job requests one A100, 32 GiB RAM, 60 minutes, and Phoenix
-`inferno` QOS; the command above raises the allocation to four hours. It derives
-the repository from the directory where `sbatch` is invoked and places caches under
+The checked-in job requests one A100, H100, or H200 GPU, 32 GiB RAM, four
+hours, and Phoenix `inferno` QOS. Slurm selects any eligible node carrying one
+of those GPU feature labels. The job derives the repository from the directory
+where `sbatch` is invoked and places caches under
 `/storage/scratch1/0/$USER/rlhf-cuq`. Override those defaults at submission
 only when needed:
 
 ```bash
-sbatch --account=your_alternative_charge_account --time=04:00:00 \
+sbatch --account=your_alternative_charge_account \
   --export=ALL,RLHF_PROJECT_ROOT=/absolute/repository/path,RLHF_JOB_STORAGE_ROOT=/absolute/scratch/path \
   scripts/slurm/train_proxy_rm.sbatch
 ```
@@ -488,7 +488,7 @@ declared optional comparison. It is not part of the CPDPO experiment.
 The Slurm script supports independent array tasks, for example:
 
 ```bash
-sbatch --time=04:00:00 --array=2-3 \
+sbatch --array=2-3 \
   scripts/slurm/train_proxy_rm.sbatch
 ```
 
