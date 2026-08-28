@@ -284,6 +284,15 @@ class RuntimeConfigTests(unittest.TestCase):
             job_text,
         )
         self.assertIn('--rng_seed "$RM_SEED"', job_text)
+        self.assertIn('RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"', job_text)
+        self.assertIn('RESUME_ARGS+=(--resume_from_checkpoint)', job_text)
+        self.assertIn('"${RESUME_ARGS[@]}"', job_text)
+        self.assertIn("PASS resumable RM checkpoint", job_text)
+        self.assertIn("trainer_state.json", job_text)
+        self.assertIn("optimizer.pt", job_text)
+        self.assertIn("scheduler.pt", job_text)
+        self.assertIn("rng_state.pth", job_text)
+        self.assertIn("the legacy trainer resumes only the latest checkpoint", job_text)
 
     def test_proxy_rm_jobs_make_conda_activation_nounset_safe(self) -> None:
         for filename in (

@@ -32,6 +32,7 @@ RM_SEED="${SLURM_ARRAY_TASK_ID:-${RM_SEED:-1}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 OUTPUT_DIR="models/rm-pythia-44m-prompt-disjoint_seed${RM_SEED}"
+RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"
 
 if [[ ! "$RM_SEED" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: RM_SEED/SLURM_ARRAY_TASK_ID must be a positive integer: $RM_SEED" >&2
@@ -77,16 +78,119 @@ echo "Expected output: $OUTPUT_DIR"
 nvidia-smi
 python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpu', torch.cuda.get_device_name(0), 'bf16', torch.cuda.is_bf16_supported()); assert torch.cuda.is_bf16_supported(), 'The checked RM configuration requires BF16 support'"
 
-if [[ -d "$OUTPUT_DIR" ]] && [[ -n "$(find "$OUTPUT_DIR" -mindepth 1 -print -quit)" ]]; then
-  echo "ERROR: output directory is not empty: $OUTPUT_DIR" >&2
-  echo "Move it aside or select a new seed; this script will not overwrite a prior run." >&2
-  exit 2
+RESUME_ARGS=()
+if [[ -n "$RESUME_CHECKPOINT" ]]; then
+  if [[ ! -d "$OUTPUT_DIR" ]]; then
+    echo "ERROR: resume requested, but the expected output directory is missing: $OUTPUT_DIR" >&2
+    exit 2
+  fi
+  if [[ ! -d "$RESUME_CHECKPOINT" ]]; then
+    echo "ERROR: requested resume checkpoint is missing: $RESUME_CHECKPOINT" >&2
+    exit 2
+  fi
+
+  OUTPUT_DIR_PATH="$(realpath -e -- "$OUTPUT_DIR")"
+  RESUME_CHECKPOINT_PATH="$(realpath -e -- "$RESUME_CHECKPOINT")"
+  RESUME_CHECKPOINT_NAME="$(basename -- "$RESUME_CHECKPOINT_PATH")"
+
+  if [[ "$(dirname -- "$RESUME_CHECKPOINT_PATH")" != "$OUTPUT_DIR_PATH" ]]; then
+    echo "ERROR: resume checkpoint must be an immediate child of $OUTPUT_DIR_PATH" >&2
+    echo "Received: $RESUME_CHECKPOINT_PATH" >&2
+    exit 2
+  fi
+  if [[ ! "$RESUME_CHECKPOINT_NAME" =~ ^checkpoint-([1-9][0-9]*)$ ]]; then
+    echo "ERROR: invalid resume checkpoint name: $RESUME_CHECKPOINT_NAME" >&2
+    exit 2
+  fi
+  RESUME_STEP="${BASH_REMATCH[1]}"
+
+  LATEST_CHECKPOINT="$(
+    find "$OUTPUT_DIR_PATH" -mindepth 1 -maxdepth 1 -type d \
+      -name 'checkpoint-[0-9]*' -print \
+      | sort -V \
+      | tail -n 1
+  )"
+  if [[ -z "$LATEST_CHECKPOINT" ]]; then
+    echo "ERROR: no checkpoints were found under $OUTPUT_DIR_PATH" >&2
+    exit 2
+  fi
+  LATEST_CHECKPOINT="$(realpath -e -- "$LATEST_CHECKPOINT")"
+  if [[ "$RESUME_CHECKPOINT_PATH" != "$LATEST_CHECKPOINT" ]]; then
+    echo "ERROR: the legacy trainer resumes only the latest checkpoint." >&2
+    echo "Requested: $RESUME_CHECKPOINT_PATH" >&2
+    echo "Latest:    $LATEST_CHECKPOINT" >&2
+    exit 2
+  fi
+
+  python - "$RESUME_CHECKPOINT_PATH" "$RESUME_STEP" <<'PY'
+import gc
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+
+root = Path(sys.argv[1])
+expected_step = int(sys.argv[2])
+required = (
+    "trainer_state.json",
+    "optimizer.pt",
+    "scheduler.pt",
+    "rng_state.pth",
+)
+for name in required:
+    path = root / name
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError(f"resume checkpoint is incomplete: {path}")
+
+state = json.loads((root / "trainer_state.json").read_text(encoding="utf-8"))
+if int(state.get("global_step", -1)) != expected_step:
+    raise RuntimeError(
+        f"checkpoint name/state mismatch: name={expected_step}, "
+        f"trainer_state={state.get('global_step')}"
+    )
+
+weight_files = sorted(root.glob("pytorch_model*.bin")) + sorted(
+    root.glob("*.safetensors")
+)
+if not weight_files:
+    raise RuntimeError(f"resume checkpoint has no model weights: {root}")
+for path in weight_files:
+    if path.stat().st_size == 0:
+        raise RuntimeError(f"resume checkpoint has an empty weight file: {path}")
+
+# Deserializing the mutable state catches truncated files before requesting a
+# GPU training continuation. Model weights are loaded by Trainer immediately
+# afterward; their presence and nonzero size are checked here.
+for name in ("optimizer.pt", "scheduler.pt", "rng_state.pth"):
+    value = torch.load(root / name, map_location="cpu")
+    del value
+    gc.collect()
+
+print(
+    "PASS resumable RM checkpoint",
+    f"path={root}",
+    f"global_step={expected_step}",
+    f"epoch={state.get('epoch')}",
+)
+PY
+
+  RESUME_ARGS+=(--resume_from_checkpoint)
+  echo "Resume checkpoint: $RESUME_CHECKPOINT_PATH"
+else
+  if [[ -d "$OUTPUT_DIR" ]] && [[ -n "$(find "$OUTPUT_DIR" -mindepth 1 -print -quit)" ]]; then
+    echo "ERROR: output directory is not empty: $OUTPUT_DIR" >&2
+    echo "Move it aside, select a new seed, or set RM_RESUME_CHECKPOINT to the latest complete checkpoint." >&2
+    exit 2
+  fi
 fi
 
 srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   src/reward_modeling/training/trainer_rm_manifest.py \
   --configs defaults_rm rm-pythia-44m rm-pythia-44m-cluster-split \
-  --rng_seed "$RM_SEED"
+  --rng_seed "$RM_SEED" \
+  "${RESUME_ARGS[@]}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   echo "ERROR: training returned success but the expected output is missing: $OUTPUT_DIR" >&2

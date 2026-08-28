@@ -476,8 +476,26 @@ sacct -j JOB_ID --format=JobID,State,Elapsed,ExitCode,AllocTRES
 ```
 
 The job refuses to run outside Slurm, confirms CUDA and BF16 support, refuses
-to overwrite a nonempty seed output, trains the RM, and writes checkpoint
-hashes under `artifacts/checksums/`.
+to overwrite a nonempty seed output during a fresh run, trains the RM, and
+writes checkpoint hashes under `artifacts/checksums/`.
+
+To resume an interrupted seed-1 run from its latest complete checkpoint, keep
+the existing output directory and submit the checkpoint explicitly. For
+example, to continue from step 2000:
+
+```bash
+sbatch \
+  --export=ALL,RM_RESUME_CHECKPOINT=models/rm-pythia-44m-prompt-disjoint_seed1/checkpoint-2000 \
+  scripts/slurm/train_proxy_rm.sbatch
+```
+
+Resume mode resolves paths before launching training and requires the requested
+checkpoint to be the latest immediate `checkpoint-N` child of the expected
+seed output. It checks that `trainer_state.json` reports the same step, that
+model weights exist, and that the optimizer, scheduler, and RNG files can be
+deserialized. The legacy Coste trainer then restores that checkpoint and skips
+the already-completed training steps. If `RM_RESUME_CHECKPOINT` is omitted, the
+original non-overwrite protection remains active.
 
 Seed 1 is the only proxy RM required for the primary PPO/PairPPO/CPDPO
 comparison. Do not submit an RM job array for the primary track. Keep that exact
