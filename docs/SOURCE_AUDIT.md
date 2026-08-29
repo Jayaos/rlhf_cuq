@@ -180,6 +180,10 @@ If a scorer fails after generation, the evaluator may resume only from complete
 per-checkpoint response files that validate against the method, seed, manifest
 prompt order, checkpoint path/fingerprint, counters, and deterministic response
 ID.  It never overwrites or silently regenerates an accepted response file.
+At the user's request, seed 1 may also be rendered as an explicitly labelled
+diagnostic without an uncertainty band.  That view uses the same validated
+checkpoint records and square-root evaluation KL but is not a multi-seed
+estimate and does not change the reportable minimum of three seeds.
 
 ## Deliberate adaptation versus original assets
 

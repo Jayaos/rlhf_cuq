@@ -79,6 +79,9 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   in a separate command.
 - Aggregate per-seed records and produce reward-vs-rollout and reward-vs-sqrt-KL
   PDF/PNG figures with a consistent uncertainty convention.
+- Support an explicitly labelled single-seed diagnostic plot with no
+  across-seed uncertainty band.  This does not relax the minimum three-seed
+  requirement in the reportable aggregation path.
 - Recover the AlpacaFarm SFT10k and human reward model from the exact local,
   manifest-pinned differences with fatal `model_sum.txt` checks.  The helper
   and Slurm job are repository-managed; authorization and acquisition of the

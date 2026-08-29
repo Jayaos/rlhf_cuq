@@ -808,6 +808,23 @@ reward, and sampled current/reference KL to that exact response ID. Use
 `D_rl_val_prompts` for trajectory/model selection and reserve
 `D_rl_test_prompts` for the final locked evaluation.
 
+To visualize a completed seed-1 comparison without launching more policy
+seeds, create an explicitly labelled diagnostic:
+
+```bash
+python scripts/aggregate_and_plot_reward_overoptimization.py \
+  --output-root /storage/scratch1/0/$USER/rlhf-cuq/outputs/reward_overoptimization \
+  --split D_rl_val_prompts \
+  --diagnostic-seed 1
+```
+
+This writes `reward_vs_rollout_step.{png,pdf}` and
+`reward_vs_sqrt_kl.{png,pdf}` under `diagnostics/seed_1/`. It compares PPO,
+PairPPO, and CPDPO using both proxy and gold rewards but deliberately has no
+uncertainty band. It is a single-seed diagnostic, not an across-seed estimate.
+The standard reportable aggregation below still requires at least three
+identical policy seeds.
+
 After evaluating all three methods and at least three identical seeds:
 
 ```bash

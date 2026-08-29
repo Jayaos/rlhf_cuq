@@ -223,6 +223,43 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         self.assertEqual(summary["eval_kl_mean"], 2.0)
         self.assertAlmostEqual(summary["sqrt_eval_kl"], 2.0 ** 0.5)
 
+    def test_single_seed_aggregation_requires_explicit_diagnostic_opt_in(self) -> None:
+        module_path = ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py"
+        spec = importlib.util.spec_from_file_location("cpdpo_diagnostic_plot_script", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        records = []
+        for method in ("ppo", "pairppo", "cpdpo"):
+            records.append(
+                {
+                    "method": method,
+                    "seed": 1,
+                    "rollout_step": 0,
+                    "proxy_reward_mean": 1.0,
+                    "gold_reward_mean": 2.0,
+                    "eval_kl_mean": 0.0,
+                    "sqrt_eval_kl": 0.0,
+                    "generated_responses": 0,
+                    "proxy_rm_calls": 0,
+                    "initial_policy_fingerprint": "initial",
+                    "policy_checkpoint_fingerprint": "initial",
+                    "reference_policy_fingerprint": "reference",
+                    "proxy_rm_fingerprint": "proxy",
+                    "gold_rm_fingerprint": "gold",
+                    "evaluation_manifest_sha256": "manifest",
+                    "evaluation_prompt_ids_sha256": "eval-prompts",
+                    "_prompt_schedule_sha256": "schedule-1",
+                    "_prompt_id_sequence_sha256": "prompt-ids-1",
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "at least 3 seeds"):
+            module.aggregate(records)
+        diagnostic = module.aggregate(records, minimum_seeds=1)
+        self.assertEqual({row["method"] for row in diagnostic}, {"ppo", "pairppo", "cpdpo"})
+        self.assertTrue(all(row["n_seeds"] == 1 for row in diagnostic))
+        self.assertTrue(all(row["proxy_reward_mean_se"] == 0.0 for row in diagnostic))
+
     def test_equal_response_proxy_and_update_budget(self) -> None:
         budgets = [
             resolve_training_budget(method, prompts_per_rollout=256, pair_batch_size=32, ppo_epochs=4)
@@ -702,6 +739,26 @@ class CPDPOPlotTests(unittest.TestCase):
             figures = Path(directory)
             module.plot(aggregated, figures)
             for name in ("figure_2a_reward_vs_training", "figure_2b_reward_vs_kl"):
+                self.assertTrue((figures / f"{name}.pdf").is_file())
+                self.assertTrue((figures / f"{name}.png").is_file())
+
+        single_seed = [record for record in records if record["seed"] == 1]
+        with self.assertRaisesRegex(ValueError, "at least 3 seeds"):
+            module.aggregate(single_seed)
+        diagnostic = module.aggregate(single_seed, minimum_seeds=1)
+        self.assertTrue(all(row["n_seeds"] == 1 for row in diagnostic))
+        self.assertTrue(all(row["proxy_reward_mean_se"] == 0.0 for row in diagnostic))
+        with tempfile.TemporaryDirectory() as directory:
+            figures = Path(directory)
+            module.plot(
+                diagnostic,
+                figures,
+                show_uncertainty=False,
+                title="Single-seed diagnostic",
+                training_filename="reward_vs_rollout_step",
+                kl_filename="reward_vs_sqrt_kl",
+            )
+            for name in ("reward_vs_rollout_step", "reward_vs_sqrt_kl"):
                 self.assertTrue((figures / f"{name}.pdf").is_file())
                 self.assertTrue((figures / f"{name}.png").is_file())
 

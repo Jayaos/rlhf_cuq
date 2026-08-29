@@ -46,7 +46,9 @@ def load_records(root: Path, split: str) -> list[dict]:
     return records
 
 
-def aggregate(records: list[dict]) -> list[dict]:
+def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
+    if minimum_seeds < 1:
+        raise ValueError("minimum_seeds must be positive")
     groups = defaultdict(list)
     for record in records:
         groups[(record["method"], int(record["rollout_step"]))].append(record)
@@ -56,8 +58,8 @@ def aggregate(records: list[dict]) -> list[dict]:
     }
     if len({tuple(sorted(values)) for values in seeds_by_method.values()}) != 1:
         raise ValueError(f"Methods do not share identical seed sets: {seeds_by_method}")
-    if min(map(len, seeds_by_method.values())) < 3:
-        raise ValueError("Reportable aggregation requires at least three seeds")
+    if min(map(len, seeds_by_method.values())) < minimum_seeds:
+        raise ValueError(f"Aggregation requires at least {minimum_seeds} seeds")
     steps_by_method = {
         method: {int(record["rollout_step"]) for record in records if record["method"] == method}
         for method in ALL_METHODS
@@ -128,7 +130,15 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             handle.write(json.dumps(row, sort_keys=True, allow_nan=False) + "\n")
 
 
-def plot(rows: list[dict], figures: Path) -> None:
+def plot(
+    rows: list[dict],
+    figures: Path,
+    *,
+    show_uncertainty: bool = True,
+    title: str | None = None,
+    training_filename: str = "figure_2a_reward_vs_training",
+    kl_filename: str = "figure_2b_reward_vs_kl",
+) -> None:
     import matplotlib.pyplot as plt
 
     figures.mkdir(parents=True, exist_ok=True)
@@ -146,9 +156,18 @@ def plot(rows: list[dict], figures: Path) -> None:
                 y = [row[y_field] for row in selected]
                 se = [row[se_field] for row in selected]
                 axis.plot(x, y, color=colors[method], linestyle=reward_styles[reward], label=f"{method.upper()} {reward}")
-                axis.fill_between(x, [a - b for a, b in zip(y, se)], [a + b for a, b in zip(y, se)], color=colors[method], alpha=0.12)
+                if show_uncertainty:
+                    axis.fill_between(
+                        x,
+                        [a - b for a, b in zip(y, se)],
+                        [a + b for a, b in zip(y, se)],
+                        color=colors[method],
+                        alpha=0.12,
+                    )
         axis.set_xlabel(x_label)
         axis.set_ylabel("Reward score")
+        if title:
+            axis.set_title(title)
         axis.grid(alpha=0.2)
         axis.legend(ncol=2, fontsize=8)
         figure.tight_layout()
@@ -156,17 +175,56 @@ def plot(rows: list[dict], figures: Path) -> None:
             figure.savefig(figures / f"{filename}.{suffix}", dpi=200)
         plt.close(figure)
 
-    make_figure("rollout_step", "Policy optimization (rollout) step", "figure_2a_reward_vs_training")
-    make_figure("sqrt_eval_kl_across_seeds", r"$\sqrt{\mathrm{evaluation\ KL}}$", "figure_2b_reward_vs_kl")
+    make_figure("rollout_step", "Policy optimization (rollout) step", training_filename)
+    make_figure("sqrt_eval_kl_across_seeds", r"$\sqrt{\mathrm{evaluation\ KL}}$", kl_filename)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", default="outputs/reward_overoptimization")
     parser.add_argument("--split", choices=["D_rl_val_prompts", "D_rl_test_prompts"], default="D_rl_val_prompts")
+    parser.add_argument(
+        "--diagnostic-seed",
+        type=int,
+        help="Create a clearly labelled single-seed diagnostic without an uncertainty band",
+    )
     args = parser.parse_args()
     root = Path(args.output_root).resolve()
     records = load_records(root, args.split)
+    if args.diagnostic_seed is not None:
+        selected = [record for record in records if int(record["seed"]) == args.diagnostic_seed]
+        if not selected:
+            raise ValueError(f"No evaluation records found for diagnostic seed {args.diagnostic_seed}")
+        aggregated = aggregate(selected, minimum_seeds=1)
+        diagnostic_dir = root / "diagnostics" / f"seed_{args.diagnostic_seed}"
+        if diagnostic_dir.exists() and any(diagnostic_dir.iterdir()):
+            raise FileExistsError(f"Refusing to overwrite diagnostic directory: {diagnostic_dir}")
+        public_records = [
+            {key: value for key, value in record.items() if not key.startswith("_")}
+            for record in selected
+        ]
+        write_jsonl(diagnostic_dir / "checkpoint_metrics.jsonl", public_records)
+        write_csv(diagnostic_dir / "checkpoint_metrics.csv", public_records)
+        write_csv(diagnostic_dir / "mean_by_checkpoint.csv", aggregated)
+        write_csv(
+            diagnostic_dir / "mean_by_sqrt_kl.csv",
+            sorted(aggregated, key=lambda row: (row["method"], row["sqrt_eval_kl_across_seeds"])),
+        )
+        plot(
+            aggregated,
+            diagnostic_dir,
+            show_uncertainty=False,
+            title=f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band)",
+            training_filename="reward_vs_rollout_step",
+            kl_filename="reward_vs_sqrt_kl",
+        )
+        print(
+            f"PASS diagnostic plots for seed {args.diagnostic_seed}: {diagnostic_dir} "
+            "(single-seed result; not an across-seed estimate)"
+        )
+        return
+
+    aggregated = aggregate(records)
     public_records = [
         {key: value for key, value in record.items() if not key.startswith("_")}
         for record in records
@@ -174,7 +232,6 @@ def main() -> None:
     evaluation_dir = root / "evaluations"
     write_jsonl(evaluation_dir / "checkpoint_metrics.jsonl", public_records)
     write_csv(evaluation_dir / "checkpoint_metrics.csv", public_records)
-    aggregated = aggregate(records)
     aggregate_dir = root / "aggregated"
     write_csv(aggregate_dir / "mean_by_checkpoint.csv", aggregated)
     write_csv(
