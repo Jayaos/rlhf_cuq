@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import tempfile
 import unittest
 from unittest import mock
@@ -12,7 +13,13 @@ from src.cpdpo.experiment import (
     resolve_training_budget,
     validate_policy_quality_record,
 )
-from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample, hydra_policy_logits
+from src.cpdpo.artifacts import canonical_json_hash
+from src.cpdpo.evaluation import (
+    checkpoint_summary,
+    format_alpaca_gold_sample,
+    hydra_policy_logits,
+    load_validated_checkpoint_responses,
+)
 from src.cpdpo.math_spec import (
     calibration_score,
     finite_sample_quantile,
@@ -69,6 +76,78 @@ class CPDPOMathSpecTests(unittest.TestCase):
 
 
 class CPDPOExperimentContractTests(unittest.TestCase):
+    def test_gold_loader_streams_shards_to_inference_device_and_dtype(self) -> None:
+        evaluator = ROOT / "scripts/evaluate_policy_checkpoints.py"
+        tree = ast.parse(evaluator.read_text(encoding="utf-8"))
+        score_gold = next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "score_gold"
+        )
+        loader_call = next(
+            node
+            for node in ast.walk(score_gold)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "RewardModel"
+            and node.func.attr == "from_pretrained"
+        )
+        keywords = {keyword.arg: keyword.value for keyword in loader_call.keywords}
+        self.assertIn("device_map", keywords)
+        self.assertIn("torch_dtype", keywords)
+        self.assertIn("low_cpu_mem_usage", keywords)
+        self.assertIsInstance(keywords["low_cpu_mem_usage"], ast.Constant)
+        self.assertIs(keywords["low_cpu_mem_usage"].value, True)
+
+    def test_persisted_evaluation_responses_are_validated_before_resume(self) -> None:
+        prompt = {"_split_prompt_id": "prompt-1", "instruction": "Do it", "input": "context"}
+        checkpoint = "/models/checkpoint_32/hf_model"
+        record = {
+            "prompt_id": "prompt-1",
+            "instruction": "Do it",
+            "input": "context",
+            "output": "done",
+            "response_token_ids": [4, 5],
+            "generated_tokens": 2,
+            "sampled_kl": 0.25,
+            "method": "ppo",
+            "seed": 1,
+            "rollout_step": 1,
+            "optimizer_step": 32,
+            "policy_checkpoint": checkpoint,
+            "policy_checkpoint_fingerprint": "checkpoint-sha",
+            "response_id": canonical_json_hash(["ppo", 1, 1, "prompt-1", [4, 5]]),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "responses_rollout_1.jsonl"
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            loaded = load_validated_checkpoint_responses(
+                path,
+                prompts=[prompt],
+                prompt_id_field="_split_prompt_id",
+                method="ppo",
+                seed=1,
+                rollout_step=1,
+                optimizer_step=32,
+                checkpoint=checkpoint,
+                checkpoint_fingerprint="checkpoint-sha",
+            )
+            self.assertEqual(loaded, [record])
+
+            tampered = dict(record, prompt_id="wrong")
+            path.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "metadata mismatch"):
+                load_validated_checkpoint_responses(
+                    path,
+                    prompts=[prompt],
+                    prompt_id_field="_split_prompt_id",
+                    method="ppo",
+                    seed=1,
+                    rollout_step=1,
+                    optimizer_step=32,
+                    checkpoint=checkpoint,
+                    checkpoint_fingerprint="checkpoint-sha",
+                )
+
     def test_evaluator_policy_logits_bypass_unused_hydra_value_head(self) -> None:
         class Output:
             logits = object()

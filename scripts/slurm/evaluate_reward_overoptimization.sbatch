@@ -8,7 +8,7 @@
 #SBATCH --array=0-8
 #SBATCH --account=gts-yxie77-paid
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=96G
+#SBATCH --mem=128G
 #SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="A100|H100|H200"

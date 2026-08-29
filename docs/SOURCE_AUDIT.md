@@ -176,6 +176,10 @@ generates one response for every fixed held-out prompt/checkpoint, saves that
 response once, then scores the same response with proxy RM, gold RM, and the
 common sampled-KL evaluator. Figure 2(a) uses proxy/gold reward against rollout
 step. Figure 2(b) reuses those checkpoint records against `sqrt(max(mean_kl,0))`.
+If a scorer fails after generation, the evaluator may resume only from complete
+per-checkpoint response files that validate against the method, seed, manifest
+prompt order, checkpoint path/fingerprint, counters, and deterministic response
+ID.  It never overwrites or silently regenerates an accepted response file.
 
 ## Deliberate adaptation versus original assets
 

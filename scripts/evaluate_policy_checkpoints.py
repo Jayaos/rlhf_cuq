@@ -19,7 +19,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alpaca_farm.models.reward_model import RewardModel
 from src.cpdpo.artifacts import canonical_json_hash, model_fingerprint, sha256_file
-from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample, hydra_policy_logits
+from src.cpdpo.evaluation import (
+    checkpoint_summary,
+    format_alpaca_gold_sample,
+    hydra_policy_logits,
+    load_validated_checkpoint_responses,
+)
 from src.cpdpo.reward_features import load_proxy_feature_scorer
 from src.cpdpo.run_logging import load_rollout_records
 from src.data_utils.split_manifest import PROMPT_ID_FIELD, load_split_records, verify_split_manifest
@@ -166,8 +171,18 @@ def score_gold(rows: list[dict], gold_path: str, device, dtype, batch_size: int)
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.unk_token
-    model = RewardModel.from_pretrained(gold_path, flash_attn=False, bf16=dtype == torch.bfloat16)
-    model = model.eval().requires_grad_(False).to(device=device, dtype=dtype)
+    # Load shards directly into their inference dtype/device.  Loading the
+    # 26-GiB FP32 checkpoint on CPU and converting it afterwards can exceed the
+    # Slurm host-memory cgroup before the first shard finishes.
+    model = RewardModel.from_pretrained(
+        gold_path,
+        device_map={"": device},
+        torch_dtype=dtype,
+        low_cpu_mem_usage=True,
+        flash_attn=False,
+        bf16=dtype == torch.bfloat16,
+    )
+    model = model.eval().requires_grad_(False)
     samples = [format_alpaca_gold_sample(row["instruction"], row["input"], row["output"]) for row in rows]
     values = []
     for start in range(0, len(samples), batch_size):
@@ -233,53 +248,91 @@ def main() -> None:  # noqa: C901
             raise ValueError(f"Checkpoint immutable context does not match run metadata: {checkpoint.parent}")
     rollout_records = load_rollout_records(run_dir)
     output_dir = run_dir / "evaluation" / args.split
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise FileExistsError(f"Refusing to overwrite evaluation directory: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    response_files = {
+        rollout_step: output_dir / f"responses_rollout_{rollout_step}.jsonl"
+        for rollout_step, _optimizer_step, _checkpoint in checkpoints
+    }
+    allowed_resume_files = {path.name for path in response_files.values()}
+    unexpected = sorted(path.name for path in output_dir.iterdir() if path.name not in allowed_resume_files)
+    if unexpected:
+        raise FileExistsError(
+            f"Refusing to overwrite completed or unrecognized evaluation artifacts in {output_dir}: {unexpected}"
+        )
 
-    tokenizer = AutoTokenizer.from_pretrained(initial)
-    tokenizer.padding_side = "left"
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = "<|padding|>"
-    reference = load_reference_policy(reference_path, dtype, device)
+    missing_responses = [path for path in response_files.values() if not path.is_file()]
+    tokenizer = None
+    reference = None
+    if missing_responses:
+        tokenizer = AutoTokenizer.from_pretrained(initial)
+        tokenizer.padding_side = "left"
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = "<|padding|>"
+        reference = load_reference_policy(reference_path, dtype, device)
     all_records = []
     for rollout_step, optimizer_step, checkpoint in checkpoints:
-        policy = load_policy(checkpoint, dtype, device)
-        generated = generate_and_kl(
-            policy=policy,
-            reference=reference,
-            tokenizer=tokenizer,
-            rows=rows,
-            batch_size=args.batch_size,
-            device=device,
-            seed=int(metadata["resolved_seeds"]["evaluation_generation"]) + rollout_step,
-        )
         checkpoint_fingerprint = model_fingerprint(checkpoint)
-        for row in generated:
-            row.update(
-                {
-                    "method": metadata["method"],
-                    "seed": metadata["base_seed"],
-                    "rollout_step": rollout_step,
-                    "optimizer_step": optimizer_step,
-                    "policy_checkpoint": str(checkpoint),
-                    "policy_checkpoint_fingerprint": checkpoint_fingerprint,
-                }
+        response_file = response_files[rollout_step]
+        if response_file.is_file():
+            generated = load_validated_checkpoint_responses(
+                response_file,
+                prompts=rows,
+                prompt_id_field=PROMPT_ID_FIELD,
+                method=metadata["method"],
+                seed=int(metadata["base_seed"]),
+                rollout_step=rollout_step,
+                optimizer_step=optimizer_step,
+                checkpoint=checkpoint,
+                checkpoint_fingerprint=checkpoint_fingerprint,
             )
-            row["response_id"] = canonical_json_hash(
-                [row["method"], row["seed"], rollout_step, row["prompt_id"], row["response_token_ids"]]
+            print(f"PASS resumed persisted responses: {response_file}")
+        else:
+            policy = load_policy(checkpoint, dtype, device)
+            generated = generate_and_kl(
+                policy=policy,
+                reference=reference,
+                tokenizer=tokenizer,
+                rows=rows,
+                batch_size=args.batch_size,
+                device=device,
+                seed=int(metadata["resolved_seeds"]["evaluation_generation"]) + rollout_step,
             )
-        response_file = output_dir / f"responses_rollout_{rollout_step}.jsonl"
-        with response_file.open("x", encoding="utf-8", newline="\n") as handle:
             for row in generated:
-                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+                row.update(
+                    {
+                        "method": metadata["method"],
+                        "seed": metadata["base_seed"],
+                        "rollout_step": rollout_step,
+                        "optimizer_step": optimizer_step,
+                        "policy_checkpoint": str(checkpoint),
+                        "policy_checkpoint_fingerprint": checkpoint_fingerprint,
+                    }
+                )
+                row["response_id"] = canonical_json_hash(
+                    [row["method"], row["seed"], rollout_step, row["prompt_id"], row["response_token_ids"]]
+                )
+            with response_file.open("x", encoding="utf-8", newline="\n") as handle:
+                for row in generated:
+                    handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n")
+            generated = load_validated_checkpoint_responses(
+                response_file,
+                prompts=rows,
+                prompt_id_field=PROMPT_ID_FIELD,
+                method=metadata["method"],
+                seed=int(metadata["base_seed"]),
+                rollout_step=rollout_step,
+                optimizer_step=optimizer_step,
+                checkpoint=checkpoint,
+                checkpoint_fingerprint=checkpoint_fingerprint,
+            )
+            del policy
+            gc.collect()
+            torch.cuda.empty_cache()
         all_records.extend(generated)
-        del policy
+    if reference is not None:
+        del reference
         gc.collect()
         torch.cuda.empty_cache()
-    del reference
-    gc.collect()
-    torch.cuda.empty_cache()
 
     proxy = load_proxy_feature_scorer(args.proxy_rm, device=device, batch_size=args.proxy_batch_size)
     proxy_rewards, _features = proxy.score(

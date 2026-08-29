@@ -83,6 +83,10 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   manifest-pinned differences with fatal `model_sum.txt` checks.  The helper
   and Slurm job are repository-managed; authorization and acquisition of the
   original LLaMA-7B base remain external prerequisites.
+- Reuse only fully validated, persisted per-checkpoint response files when an
+  offline scorer fails after generation.  Resume must never regenerate or
+  overwrite an accepted response file, and final scored/metric artifacts
+  remain exclusive outputs.
 
 ## 8. Verification — in progress
 
