@@ -667,6 +667,31 @@ sign_only` for the sign-only certified update. Never mix a unit-geometry
 calibration artifact with a full-geometry run; fingerprint validation rejects
 that mismatch.
 
+`alpha=0.10` remains the specification-defined main result. To run a
+predeclared alpha sensitivity ablation, export the same value while preparing
+artifacts and training. For example:
+
+```bash
+ALPHA=0.20
+sbatch --export=ALL,CPDPO_ALPHA="$ALPHA" \
+  scripts/slurm/prepare_cpdpo_artifacts.sbatch
+
+sbatch --array=2 \
+  --export=ALL,ROLLOUT_STEPS=100,CPDPO_ALPHA="$ALPHA" \
+  scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+The artifact job automatically writes a non-default value to a separate path,
+for example `artifacts/cpdpo/proxy_rm_seed1_alpha_0p2/`. The training job
+automatically writes `seed_1/cpdpo_alpha_0p2/`; `seed_1/cpdpo/` remains the
+untouched `alpha=0.10` main run. Submit only array index `2` because PPO and
+PairPPO do not use alpha and their existing controls are reused. The loader
+requires the calibration alpha to equal the training alpha and fingerprints
+the selected threshold, so an alpha run cannot resume from or load another
+alpha's artifacts. Increasing alpha generally selects a lower conformal order
+statistic and therefore makes certification less conservative, but alpha must
+not be selected using gold reward.
+
 #### 2. Materialize the shared prompt schedules
 
 The experiment specification does not freeze a numerical rollout horizon, so
@@ -763,7 +788,8 @@ track may use one common nonzero beta across all methods.
 
 Training entry points do not accept a gold-model argument. Run metadata records
 all four seed namespaces, response/proxy-call budgets, prompt schedule hash,
-initial/reference/proxy fingerprints, and CPDPO artifact fingerprints.
+initial/reference/proxy fingerprints, CPDPO alpha/run identity, and CPDPO
+artifact fingerprints.
 PairPPO and CPDPO additionally write atomic
 `pair_rollouts/rollout_XXXXXX.pt` records containing both response token
 sequences and masks, old/reference token log-probabilities, frozen pair
@@ -780,7 +806,7 @@ sbatch --export=ALL,ROLLOUT_STEPS=100,CPDPO_RESUME_CHECKPOINT="$PWD/outputs/rewa
 
 The checkpoint must be the latest checkpoint in that exact method/seed output directory. Resume
 rejects a changed horizon, code revision, schedule, manifest, policy, proxy RM,
-geometry, or calibration. If the interrupted process logged rollouts newer than
+alpha, geometry, or calibration. If the interrupted process logged rollouts newer than
 the restored checkpoint, their JSONL is first copied to a timestamped
 `rollout_metrics.before_resume_*.jsonl` archive and the active log is rewound to
 the checkpoint boundary. Completed runs cannot be resumed.
@@ -860,6 +886,26 @@ sbatch --export=ALL,GOLD_RM_PATH=/absolute/path/to/reward-model-human \
 ```
 
 Set `CPDPO_EVAL_SPLIT=D_rl_test_prompts` only for the final locked evaluation.
+
+For the non-default alpha example, evaluate only its CPDPO task and then plot
+it against the already evaluated PPO and PairPPO controls:
+
+```bash
+sbatch --array=2 \
+  --export=ALL,GOLD_RM_PATH=/absolute/path/to/reward-model-human,CPDPO_ALPHA=0.20 \
+  scripts/slurm/evaluate_reward_overoptimization.sbatch
+
+python scripts/aggregate_and_plot_reward_overoptimization.py \
+  --output-root /storage/scratch1/0/$USER/rlhf-cuq/outputs/reward_overoptimization \
+  --split D_rl_val_prompts \
+  --diagnostic-seed 1 \
+  --cpdpo-alpha 0.20
+```
+
+The ablation plots are isolated under
+`alpha_ablations/alpha_0p2/diagnostics/seed_1/`; they do not overwrite the
+main-alpha plots. The legend records the selected alpha. Do not use
+`D_rl_test_prompts` to choose an alpha.
 
 ### Legacy experiment: checked-code PPO baseline on the strict split
 

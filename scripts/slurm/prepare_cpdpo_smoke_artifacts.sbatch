@@ -25,7 +25,7 @@ CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint-smoke_seed1}"
 MANIFEST_PATH="${CPDPO_MANIFEST_PATH:-data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json}"
-ARTIFACT_DIR="${CPDPO_ARTIFACT_DIR:-artifacts/cpdpo/proxy_rm_smoke_seed1_quick}"
+CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 RM_PAIRS="${CPDPO_SMOKE_RM_PAIRS:-64}"
 CAL_PAIRS="${CPDPO_SMOKE_CAL_PAIRS:-64}"
 
@@ -43,6 +43,15 @@ source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export PYTHONNOUSERSITE=1 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 
+ALPHA_TAG="$(python -c 'import sys; from src.cpdpo.spec import alpha_tag; print(alpha_tag(float(sys.argv[1])))' "$CPDPO_ALPHA")"
+if [[ -n "${CPDPO_ARTIFACT_DIR:-}" ]]; then
+  ARTIFACT_DIR="$CPDPO_ARTIFACT_DIR"
+elif [[ "$ALPHA_TAG" == "0p1" ]]; then
+  ARTIFACT_DIR="artifacts/cpdpo/proxy_rm_smoke_seed1_quick"
+else
+  ARTIFACT_DIR="artifacts/cpdpo/proxy_rm_smoke_seed1_quick_alpha_${ALPHA_TAG}"
+fi
+
 python scripts/validate_legacy_sources.py
 python scripts/build_data_manifest.py --config configs/data_split_prompt_disjoint_v1.yaml --verify-only
 test -d "$PROXY_RM_PATH"
@@ -55,6 +64,7 @@ srun python scripts/prepare_cpdpo_artifacts.py \
   --manifest "$MANIFEST_PATH" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$ARTIFACT_DIR" \
+  --alpha "$CPDPO_ALPHA" \
   --device cuda:0 \
   --batch-size 32 \
   --max-rm-pairs "$RM_PAIRS" \

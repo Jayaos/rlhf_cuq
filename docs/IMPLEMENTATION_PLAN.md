@@ -19,6 +19,12 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   pairwise clipped loss.
 - Leave only the total rollout horizon as an explicit full-run parameter.
 
+The frozen main comparison continues to use `alpha=0.10`. Alternative alpha
+values are permitted only as an explicitly labelled CPDPO sensitivity
+ablation: they must produce a separate calibration artifact and CPDPO run
+directory, keep one threshold fixed for the whole run, reuse the unchanged
+PPO/PairPPO controls, and never use gold reward to choose the value.
+
 ## 3. Implement transparent CPDPO numerical primitives — done
 
 - Reward-head feature hook and identity check.
@@ -90,6 +96,9 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   offline scorer fails after generation.  Resume must never regenerate or
   overwrite an accepted response file, and final scored/metric artifacts
   remain exclusive outputs.
+- Select a named CPDPO alpha-ablation run while reusing the identical PPO and
+  PairPPO control records. Record alpha in calibration, run, checkpoint, and
+  evaluation provenance and identify it in plot legends.
 
 ## 8. Verification — in progress
 

@@ -22,6 +22,13 @@ decision table. No equation needed by the v1 CPDPO online reward path is open.
 - comparison of PPO, PairPPO, and CPDPO only;
 - gold evaluation in a separate process on persisted common responses.
 
+`alpha=0.10` remains frozen for the v1 main result. A user-declared alternate
+alpha is a named sensitivity ablation, not a replacement main configuration.
+Each such run must rebuild the finite-sample calibration threshold before
+training, keep it fixed throughout training, use an alpha-specific artifact
+and run identity, and be compared against the unchanged PPO/PairPPO controls.
+Gold reward cannot be used to select alpha.
+
 ## Configurable, not scientifically unresolved
 
 - Total rollout horizon. The experiment PDF requires it to be equal across
@@ -30,6 +37,8 @@ decision table. No equation needed by the v1 CPDPO online reward path is open.
   across methods.
 - Number of seeds. Minimum 3, preferred 5.
 - A later nonzero common KL beta track.
+- Predeclared CPDPO alpha sensitivity values, provided they are reported as
+  ablations and never selected using gold reward.
 
 ## Out of scope for v1
 

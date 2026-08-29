@@ -32,7 +32,7 @@ PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1
 OUTPUT_ROOT="${CPDPO_OUTPUT_ROOT:-outputs/reward_overoptimization}"
 EVAL_SPLIT="${CPDPO_EVAL_SPLIT:-D_rl_val_prompts}"
 NUM_PROMPTS="${CPDPO_EVAL_NUM_PROMPTS:-0}"
-RUN_DIR="$OUTPUT_ROOT/seed_${SEED}/$METHOD"
+CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 
 cd "$PROJECT_ROOT"
 set +u
@@ -42,6 +42,9 @@ set -u
 source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export PYTHONNOUSERSITE=1 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+
+RUN_VARIANT="$(python -c 'import sys; from src.cpdpo.spec import method_run_name; print(method_run_name(sys.argv[1], float(sys.argv[2])))' "$METHOD" "$CPDPO_ALPHA")"
+RUN_DIR="$OUTPUT_ROOT/seed_${SEED}/$RUN_VARIANT"
 
 python scripts/validate_legacy_sources.py
 test -f "$RUN_DIR/run_metadata.json"
@@ -59,4 +62,4 @@ srun python scripts/evaluate_policy_checkpoints.py \
   --device cuda:0 \
   --dtype bf16
 
-echo "PASS offline evaluation method=$METHOD seed=$SEED split=$EVAL_SPLIT"
+echo "PASS offline evaluation method=$METHOD seed=$SEED split=$EVAL_SPLIT cpdpo_alpha=$CPDPO_ALPHA"

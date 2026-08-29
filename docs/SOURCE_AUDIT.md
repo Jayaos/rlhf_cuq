@@ -185,6 +185,14 @@ diagnostic without an uncertainty band.  That view uses the same validated
 checkpoint records and square-root evaluation KL but is not a multi-seed
 estimate and does not change the reportable minimum of three seeds.
 
+The user subsequently requested runtime-selectable alpha sensitivity runs.
+This does not change the specification-defined main value `alpha=0.10` or any
+equation above. A non-default value is recorded as a CPDPO alpha ablation,
+produces a distinct fixed `q_alpha` calibration artifact and run directory,
+and reuses the unchanged PPO and PairPPO control records. Calibration/run/
+evaluation fingerprints reject an alpha mismatch, and gold reward remains
+unavailable to calibration and training and may not be used to select alpha.
+
 ## Deliberate adaptation versus original assets
 
 This is not AdvPO and no AdvPO confidence matrix, reference-response robust

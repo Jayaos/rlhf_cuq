@@ -31,7 +31,7 @@ from src.cpdpo.prompt_schedule import (
     build_prompt_schedule,
     load_schedule_as_duplicated_prompts,
 )
-from src.cpdpo.spec import CPDPOConfig
+from src.cpdpo.spec import ALPHA, CPDPOConfig, alpha_tag, method_run_name
 from src.cpdpo.run_logging import (
     append_rollout_record,
     archive_pair_rollouts_after_checkpoint,
@@ -73,6 +73,16 @@ class CPDPOMathSpecTests(unittest.TestCase):
             CPDPOConfig(method="pairppo", reward_variant="sign_only")
         with self.assertRaisesRegex(ValueError, "persistence"):
             CPDPOConfig(method="cpdpo", log_pair_records=False)
+
+    def test_alpha_ablation_has_a_distinct_stable_run_identity(self) -> None:
+        self.assertEqual(ALPHA, 0.10)
+        self.assertEqual(alpha_tag(0.20), "0p2")
+        self.assertEqual(method_run_name("cpdpo", 0.10), "cpdpo")
+        self.assertEqual(method_run_name("cpdpo", 0.20), "cpdpo_alpha_0p2")
+        self.assertEqual(method_run_name("ppo", 0.10), "ppo")
+        self.assertEqual(CPDPOConfig(method="cpdpo", alpha=0.20).alpha, 0.20)
+        with self.assertRaisesRegex(ValueError, "alpha"):
+            CPDPOConfig(method="cpdpo", alpha=1.0)
 
 
 class CPDPOExperimentContractTests(unittest.TestCase):
@@ -263,6 +273,54 @@ class CPDPOExperimentContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ModuleNotFoundError, "matplotlib==3.7.2"):
                 module.require_plotting_dependency()
 
+    def test_alpha_plot_selection_reuses_controls_and_selects_named_cpdpo_run(self) -> None:
+        module_path = ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py"
+        spec = importlib.util.spec_from_file_location("cpdpo_alpha_plot_script", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            variants = (
+                ("ppo", "ppo", None, 1.0),
+                ("pairppo", "pairppo", None, 2.0),
+                ("cpdpo", "cpdpo", 0.10, 3.0),
+                ("cpdpo", "cpdpo_alpha_0p2", 0.20, 4.0),
+            )
+            for method, run_variant, alpha, proxy_mean in variants:
+                run = root / "seed_1" / run_variant
+                metrics = run / "evaluation" / "D_rl_val_prompts" / "checkpoint_metrics.jsonl"
+                metrics.parent.mkdir(parents=True)
+                metadata = {
+                    "method": method,
+                    "prompt_schedule_sha256": "schedule",
+                    "prompt_id_sequence_sha256": "prompt-ids",
+                    "pair_method": {"alpha": alpha} if alpha is not None else None,
+                }
+                if alpha is not None:
+                    metadata.update({"run_variant": run_variant, "cpdpo_alpha": alpha})
+                (run / "run_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+                metrics.write_text(
+                    json.dumps(
+                        {
+                            "method": method,
+                            "seed": 1,
+                            "rollout_step": 0,
+                            "proxy_reward_mean": proxy_mean,
+                            "gold_reward_mean": 0.0,
+                            "eval_kl_mean": 0.0,
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+
+            selected = module.load_records(root, "D_rl_val_prompts", cpdpo_alpha=0.20)
+
+        self.assertEqual({row["method"] for row in selected}, {"ppo", "pairppo", "cpdpo"})
+        cpdpo = next(row for row in selected if row["method"] == "cpdpo")
+        self.assertEqual(cpdpo["proxy_reward_mean"], 4.0)
+        self.assertEqual(cpdpo["_cpdpo_alpha"], 0.20)
+
     def test_equal_response_proxy_and_update_budget(self) -> None:
         budgets = [
             resolve_training_budget(method, prompts_per_rollout=256, pair_batch_size=32, ppo_epochs=4)
@@ -322,6 +380,26 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         self.assertNotIn("--allow-smoke-artifacts", full_job)
         self.assertIn("--max-rm-pairs", artifact_job)
         self.assertIn("--max-cal-pairs", artifact_job)
+
+    def test_alpha_is_plumbed_through_artifacts_training_evaluation_and_plots(self) -> None:
+        artifact_script = (ROOT / "scripts/prepare_cpdpo_artifacts.py").read_text(encoding="utf-8")
+        trainer = (ROOT / "src/ppo/trainer_reward_overoptimization.py").read_text(encoding="utf-8")
+        artifact_job = (ROOT / "scripts/slurm/prepare_cpdpo_artifacts.sbatch").read_text(encoding="utf-8")
+        training_job = (ROOT / "scripts/slurm/train_reward_overoptimization.sbatch").read_text(encoding="utf-8")
+        evaluation_job = (ROOT / "scripts/slurm/evaluate_reward_overoptimization.sbatch").read_text(
+            encoding="utf-8"
+        )
+        plot_script = (ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"--alpha"', artifact_script)
+        self.assertIn("alpha=args.alpha", artifact_script)
+        self.assertIn('"--alpha"', trainer)
+        self.assertIn("alpha=args.alpha", trainer)
+        self.assertIn('--alpha "$CPDPO_ALPHA"', artifact_job)
+        self.assertIn('--alpha "$CPDPO_ALPHA"', training_job)
+        self.assertIn("method_run_name", evaluation_job)
+        self.assertIn('"--cpdpo-alpha"', plot_script)
 
     def test_plot_records_reject_internal_pair_reward(self) -> None:
         record = {

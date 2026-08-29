@@ -10,7 +10,7 @@ import torch
 from src.cpdpo.artifacts import model_fingerprint, sha256_file, tokenizer_fingerprint
 from src.cpdpo.geometry import PairGeometry, pair_signals
 from src.cpdpo.reward_features import ProxyRewardFeatureScorer, load_proxy_feature_scorer
-from src.cpdpo.spec import CPDPOConfig
+from src.cpdpo.spec import CPDPOConfig, is_main_alpha
 
 
 class PairRewardCallback:
@@ -86,6 +86,9 @@ class PairRewardCallback:
             raise ValueError("Unsupported conformal calibration schema")
         if value.get("alpha") != self.config.alpha or value.get("epsilon") != self.config.epsilon:
             raise ValueError("Calibration alpha/epsilon does not match the training configuration")
+        expected_track = "main" if is_main_alpha(self.config.alpha) else "cpdpo_alpha_ablation"
+        if value.get("experiment_track", expected_track) != expected_track:
+            raise ValueError("Calibration experiment track does not match alpha")
         if value.get("proxy_rm_fingerprint") != self.proxy_rm_fingerprint:
             raise ValueError("Calibration artifact was built from a different proxy RM")
         if value.get("tokenizer_fingerprint") != self.tokenizer_fingerprint:
@@ -177,5 +180,6 @@ class PairRewardCallback:
             "calibration_scores_fingerprint": self.calibration_scores_fingerprint,
             "artifact_scope": self.artifact_scope,
             "data_manifest_fingerprint": self.data_manifest_fingerprint,
+            "alpha": self.config.alpha if self.config.method == "cpdpo" else None,
             "q_alpha": self.q_alpha,
         }

@@ -206,6 +206,12 @@ def main() -> None:  # noqa: C901
     metadata = json.loads((run_dir / "run_metadata.json").read_text(encoding="utf-8"))
     if metadata.get("gold_training_access") is not False:
         raise ValueError("Run metadata does not prove gold isolation")
+    run_variant = metadata.get("run_variant", metadata["method"])
+    if run_dir.name != run_variant:
+        raise ValueError(f"Run directory name does not match run metadata: {run_dir.name} != {run_variant}")
+    cpdpo_alpha = metadata.get("cpdpo_alpha")
+    if metadata["method"] == "cpdpo" and cpdpo_alpha is None:
+        cpdpo_alpha = (metadata.get("pair_method") or {}).get("alpha")
     manifest = Path(args.manifest).resolve()
     verify_split_manifest(manifest)
     manifest_fingerprint = sha256_file(manifest)
@@ -244,6 +250,9 @@ def main() -> None:  # noqa: C901
             "pair_artifacts": metadata["pair_artifacts"],
             "code_revision": metadata["code_revision"],
         }
+        for key in ("run_variant", "experiment_track", "cpdpo_alpha"):
+            if key in metadata:
+                expected[key] = metadata[key]
         if any(context.get(key) != value for key, value in expected.items()):
             raise ValueError(f"Checkpoint immutable context does not match run metadata: {checkpoint.parent}")
     rollout_records = load_rollout_records(run_dir)
@@ -371,6 +380,9 @@ def main() -> None:  # noqa: C901
                 "schema_version": "1.0.0",
                 "experiment": "reward_overoptimization",
                 "method": metadata["method"],
+                "run_variant": run_variant,
+                "experiment_track": metadata.get("experiment_track", "main"),
+                "cpdpo_alpha": cpdpo_alpha,
                 "seed": metadata["base_seed"],
                 "rollout_step": rollout_step,
                 "optimizer_step": optimizer_step,

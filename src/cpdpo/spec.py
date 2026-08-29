@@ -16,6 +16,31 @@ PAIR_METHODS = frozenset({"pairppo", "cpdpo"})
 ALL_METHODS = frozenset({"ppo", *PAIR_METHODS})
 
 
+def is_main_alpha(alpha: float) -> bool:
+    """Return whether alpha is the specification-defined main value."""
+
+    return float(alpha) == ALPHA
+
+
+def alpha_tag(alpha: float) -> str:
+    """Return a stable filesystem-safe tag for a validated alpha value."""
+
+    parsed = float(alpha)
+    if not 0.0 < parsed < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    return format(parsed, ".15g").replace("-", "m").replace("+", "").replace(".", "p")
+
+
+def method_run_name(method: str, alpha: float = ALPHA) -> str:
+    """Keep main paths stable while isolating non-default CPDPO ablations."""
+
+    if method not in ALL_METHODS:
+        raise ValueError(f"Unknown experiment method: {method}")
+    if method != "cpdpo":
+        return method
+    return "cpdpo" if is_main_alpha(alpha) else f"cpdpo_alpha_{alpha_tag(alpha)}"
+
+
 @dataclass(frozen=True)
 class CPDPOConfig:
     """Configuration whose defaults exactly match the frozen PDF specification."""

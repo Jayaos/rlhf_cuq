@@ -25,7 +25,13 @@ from src.cpdpo.artifacts import (
 )
 from src.cpdpo.geometry import build_pair_geometry, calibration_scores, conformal_quantile
 from src.cpdpo.reward_features import load_proxy_feature_scorer
-from src.cpdpo.spec import ALPHA, CALIBRATION_EPSILON, RIDGE_SCALE, ZERO_TRACE_RIDGE
+from src.cpdpo.spec import (
+    ALPHA,
+    CALIBRATION_EPSILON,
+    RIDGE_SCALE,
+    ZERO_TRACE_RIDGE,
+    is_main_alpha,
+)
 from src.data_utils.split_manifest import load_split_records, verify_split_manifest
 
 
@@ -37,6 +43,12 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--batch-size", type=int, default=64)
     value.add_argument("--device", default="cuda:0")
     value.add_argument("--geometry-mode", choices=["full", "unit"], default="full")
+    value.add_argument(
+        "--alpha",
+        type=alpha_value,
+        default=ALPHA,
+        help="Conformal miscoverage level; 0.10 is the frozen main run and other values are ablations",
+    )
     value.add_argument(
         "--max-rm-pairs",
         type=positive_int,
@@ -55,6 +67,13 @@ def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
         raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
+def alpha_value(value: str) -> float:
+    parsed = float(value)
+    if not 0.0 < parsed < 1.0:
+        raise argparse.ArgumentTypeError("alpha must be in (0, 1)")
     return parsed
 
 
@@ -188,7 +207,7 @@ def main() -> None:
     scores = calibration_scores(
         labels_tensor, margins_tensor, uncertainty_tensor, epsilon=CALIBRATION_EPSILON
     )
-    q_alpha, rank = conformal_quantile(scores, alpha=ALPHA)
+    q_alpha, rank = conformal_quantile(scores, alpha=args.alpha)
     scores_path = output / "calibration_scores.pt"
     atomic_torch_save(
         scores_path,
@@ -209,7 +228,8 @@ def main() -> None:
         "geometry_fingerprint": geometry_fingerprint,
         "geometry_mode": args.geometry_mode,
         "calibration_scores_fingerprint": sha256_file(scores_path),
-        "alpha": ALPHA,
+        "alpha": args.alpha,
+        "experiment_track": "main" if is_main_alpha(args.alpha) else "cpdpo_alpha_ablation",
         "epsilon": CALIBRATION_EPSILON,
         "n_cal": scores.numel(),
         "quantile_rank_one_based": rank,
@@ -234,7 +254,7 @@ def main() -> None:
         f"ridge={geometry.ridge if geometry is not None else None}"
     )
     print(
-        f"PASS calibration: scope={artifact_scope} n={scores.numel()} "
+        f"PASS calibration: scope={artifact_scope} alpha={args.alpha} n={scores.numel()} "
         f"rank={rank} q_alpha={q_alpha.item()}"
     )
 

@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.cpdpo.experiment import validate_policy_quality_record
-from src.cpdpo.spec import ALL_METHODS
+from src.cpdpo.spec import ALPHA, ALL_METHODS, alpha_tag, is_main_alpha, method_run_name
 
 
 def require_plotting_dependency() -> None:
@@ -35,10 +35,31 @@ def mean_se(values: list[float]) -> tuple[float, float]:
     return mean, se
 
 
-def load_records(root: Path, split: str) -> list[dict]:
+def load_records(root: Path, split: str, *, cpdpo_alpha: float = ALPHA) -> list[dict]:
     records = []
-    for path in sorted(root.glob(f"seed_*/*/evaluation/{split}/checkpoint_metrics.jsonl")):
+    run_names = {
+        "ppo": method_run_name("ppo"),
+        "pairppo": method_run_name("pairppo"),
+        "cpdpo": method_run_name("cpdpo", cpdpo_alpha),
+    }
+    paths = [
+        seed_dir / run_name / "evaluation" / split / "checkpoint_metrics.jsonl"
+        for seed_dir in sorted(root.glob("seed_*"))
+        for run_name in run_names.values()
+        if (seed_dir / run_name / "evaluation" / split / "checkpoint_metrics.jsonl").is_file()
+    ]
+    for path in paths:
         run_metadata = json.loads((path.parents[2] / "run_metadata.json").read_text(encoding="utf-8"))
+        method = run_metadata["method"]
+        if path.parents[2].name != run_names.get(method):
+            raise ValueError(f"Unexpected run directory for {method}: {path.parents[2]}")
+        recorded_alpha = run_metadata.get("cpdpo_alpha")
+        if method == "cpdpo" and recorded_alpha is None:
+            recorded_alpha = (run_metadata.get("pair_method") or {}).get("alpha", ALPHA)
+        if method == "cpdpo" and float(recorded_alpha) != float(cpdpo_alpha):
+            raise ValueError(
+                f"Requested CPDPO alpha {cpdpo_alpha}, but {path.parents[2]} records {recorded_alpha}"
+            )
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if line.strip():
@@ -46,6 +67,7 @@ def load_records(root: Path, split: str) -> list[dict]:
                     validate_policy_quality_record(record)
                     record["_prompt_schedule_sha256"] = run_metadata["prompt_schedule_sha256"]
                     record["_prompt_id_sequence_sha256"] = run_metadata["prompt_id_sequence_sha256"]
+                    record["_cpdpo_alpha"] = recorded_alpha if method == "cpdpo" else None
                     records.append(record)
     if not records:
         raise FileNotFoundError(f"No checkpoint metrics found under {root}")
@@ -115,7 +137,15 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
     for (method, step), rows in sorted(groups.items()):
         if len({row["seed"] for row in rows}) != len(rows):
             raise ValueError(f"Duplicate seed record for {method} rollout {step}")
-        aggregated = {"method": method, "rollout_step": step, "n_seeds": len(rows)}
+        alpha_values = {row.get("_cpdpo_alpha") for row in rows}
+        if len(alpha_values) != 1:
+            raise ValueError(f"Rows disagree on CPDPO alpha for {method} rollout {step}")
+        aggregated = {
+            "method": method,
+            "rollout_step": step,
+            "n_seeds": len(rows),
+            "cpdpo_alpha": next(iter(alpha_values)),
+        }
         for field in fields:
             mean, se = mean_se([float(row[field]) for row in rows])
             aggregated[f"{field}_across_seeds"] = mean
@@ -145,6 +175,7 @@ def plot(
     *,
     show_uncertainty: bool = True,
     title: str | None = None,
+    cpdpo_alpha: float = ALPHA,
     training_filename: str = "figure_2a_reward_vs_training",
     kl_filename: str = "figure_2b_reward_vs_kl",
 ) -> None:
@@ -164,7 +195,16 @@ def plot(
                 se_field = f"{reward}_reward_mean_se"
                 y = [row[y_field] for row in selected]
                 se = [row[se_field] for row in selected]
-                axis.plot(x, y, color=colors[method], linestyle=reward_styles[reward], label=f"{method.upper()} {reward}")
+                method_label = method.upper()
+                if method == "cpdpo" and not is_main_alpha(cpdpo_alpha):
+                    method_label = f"CPDPO alpha={cpdpo_alpha:g}"
+                axis.plot(
+                    x,
+                    y,
+                    color=colors[method],
+                    linestyle=reward_styles[reward],
+                    label=f"{method_label} {reward}",
+                )
                 if show_uncertainty:
                     axis.fill_between(
                         x,
@@ -193,20 +233,33 @@ def main() -> None:
     parser.add_argument("--output-root", default="outputs/reward_overoptimization")
     parser.add_argument("--split", choices=["D_rl_val_prompts", "D_rl_test_prompts"], default="D_rl_val_prompts")
     parser.add_argument(
+        "--cpdpo-alpha",
+        type=float,
+        default=ALPHA,
+        help="Select the main CPDPO run (0.10) or a named alpha-ablation run",
+    )
+    parser.add_argument(
         "--diagnostic-seed",
         type=int,
         help="Create a clearly labelled single-seed diagnostic without an uncertainty band",
     )
     args = parser.parse_args()
+    if not 0.0 < args.cpdpo_alpha < 1.0:
+        raise ValueError("cpdpo-alpha must be in (0, 1)")
     root = Path(args.output_root).resolve()
-    records = load_records(root, args.split)
+    records = load_records(root, args.split, cpdpo_alpha=args.cpdpo_alpha)
+    result_root = (
+        root
+        if is_main_alpha(args.cpdpo_alpha)
+        else root / "alpha_ablations" / f"alpha_{alpha_tag(args.cpdpo_alpha)}"
+    )
     if args.diagnostic_seed is not None:
         selected = [record for record in records if int(record["seed"]) == args.diagnostic_seed]
         if not selected:
             raise ValueError(f"No evaluation records found for diagnostic seed {args.diagnostic_seed}")
         aggregated = aggregate(selected, minimum_seeds=1)
         require_plotting_dependency()
-        diagnostic_dir = root / "diagnostics" / f"seed_{args.diagnostic_seed}"
+        diagnostic_dir = result_root / "diagnostics" / f"seed_{args.diagnostic_seed}"
         if diagnostic_dir.exists() and any(diagnostic_dir.iterdir()):
             raise FileExistsError(f"Refusing to overwrite diagnostic directory: {diagnostic_dir}")
         public_records = [
@@ -224,7 +277,15 @@ def main() -> None:
             aggregated,
             diagnostic_dir,
             show_uncertainty=False,
-            title=f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band)",
+            title=(
+                f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band)"
+                if is_main_alpha(args.cpdpo_alpha)
+                else (
+                    f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band; "
+                    f"CPDPO alpha={args.cpdpo_alpha:g})"
+                )
+            ),
+            cpdpo_alpha=args.cpdpo_alpha,
             training_filename="reward_vs_rollout_step",
             kl_filename="reward_vs_sqrt_kl",
         )
@@ -240,18 +301,18 @@ def main() -> None:
         {key: value for key, value in record.items() if not key.startswith("_")}
         for record in records
     ]
-    evaluation_dir = root / "evaluations"
+    evaluation_dir = result_root / "evaluations"
     write_jsonl(evaluation_dir / "checkpoint_metrics.jsonl", public_records)
     write_csv(evaluation_dir / "checkpoint_metrics.csv", public_records)
-    aggregate_dir = root / "aggregated"
+    aggregate_dir = result_root / "aggregated"
     write_csv(aggregate_dir / "mean_by_checkpoint.csv", aggregated)
     write_csv(
         aggregate_dir / "mean_by_kl.csv",
         sorted(aggregated, key=lambda row: (row["method"], row["sqrt_eval_kl_across_seeds"])),
     )
-    plot(aggregated, root / "figures")
+    plot(aggregated, result_root / "figures", cpdpo_alpha=args.cpdpo_alpha)
     print(f"PASS aggregated {len(records)} checkpoint records across {aggregated[0]['n_seeds']} seeds")
-    print(f"PASS figures: {root / 'figures'}")
+    print(f"PASS figures: {result_root / 'figures'}")
 
 
 if __name__ == "__main__":

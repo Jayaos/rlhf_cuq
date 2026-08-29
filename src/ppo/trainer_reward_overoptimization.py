@@ -24,7 +24,7 @@ from trlx.data.configs import TRLConfig
 from src.cpdpo.artifacts import atomic_write_json, git_revision, model_fingerprint, sha256_file
 from src.cpdpo.pair_reward import PairRewardCallback
 from src.cpdpo.prompt_schedule import ExperimentSeeds, load_schedule_as_duplicated_prompts
-from src.cpdpo.spec import ALL_METHODS, CPDPOConfig
+from src.cpdpo.spec import ALPHA, ALL_METHODS, CPDPOConfig, is_main_alpha, method_run_name
 from src.data_utils.manifest_dataset_loader import get_manifest_dataset
 from src.ppo.custom_helpers import get_reward_fn
 from src.ppo.custom_trlx_trainers.custom_accelerate_pair_ppo_trainer import (  # noqa: F401
@@ -55,6 +55,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pair-chunk-size", type=int, default=64)
     parser.add_argument("--proxy-batch-size", type=int, default=64)
     parser.add_argument("--kl-beta", type=float, default=0.0)
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=ALPHA,
+        help="CPDPO conformal alpha; non-default values create a named alpha-ablation run",
+    )
     parser.add_argument("--reward-variant", choices=["robust_margin", "sign_only"], default="robust_margin")
     parser.add_argument("--geometry-mode", choices=["full", "unit"], default="full")
     parser.add_argument(
@@ -124,6 +130,17 @@ def main() -> None:  # noqa: C901
         raise ValueError("CPDPO ablation flags cannot be applied to PPO or PairPPO")
     if args.allow_smoke_artifacts and args.method != "cpdpo":
         raise ValueError("--allow-smoke-artifacts is valid only for CPDPO")
+    if not 0.0 < args.alpha < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    if args.method != "cpdpo" and not is_main_alpha(args.alpha):
+        raise ValueError("--alpha applies only to CPDPO; PPO and PairPPO controls are unchanged")
+
+    run_variant = method_run_name(args.method, args.alpha)
+    experiment_track = (
+        "cpdpo_alpha_ablation"
+        if args.method == "cpdpo" and not is_main_alpha(args.alpha)
+        else "main"
+    )
 
     schedule_path = Path(args.prompt_schedule).resolve()
     training_conf = merged_training_config(args.configs)
@@ -172,6 +189,7 @@ def main() -> None:  # noqa: C901
         trlx_config.train.batch_size = args.pair_batch_size
         pair_config = CPDPOConfig(
             method=args.method,
+            alpha=args.alpha,
             kl_beta=args.kl_beta,
             reward_variant=args.reward_variant,
             geometry_mode=args.geometry_mode,
@@ -205,7 +223,7 @@ def main() -> None:  # noqa: C901
     trlx_config.train.eval_interval = checkpoint_interval
     trlx_config.scheduler.kwargs["T_max"] = total_optimizer_steps
 
-    output_dir = Path(args.output_root).resolve() / f"seed_{args.base_seed}" / args.method
+    output_dir = Path(args.output_root).resolve() / f"seed_{args.base_seed}" / run_variant
     resume_checkpoint = Path(args.resume_from_checkpoint).resolve() if args.resume_from_checkpoint else None
     if resume_checkpoint is None and output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite non-empty run directory: {output_dir}")
@@ -231,7 +249,7 @@ def main() -> None:  # noqa: C901
             raise ValueError("Resume is allowed only from the latest checkpoint in this run")
     trlx_config.train.output_dir = str(output_dir)
     trlx_config.train.checkpoint_dir = str(checkpoint_dir)
-    trlx_config.train.run_name = f"reward_overoptimization/seed_{args.base_seed}/{args.method}"
+    trlx_config.train.run_name = f"reward_overoptimization/seed_{args.base_seed}/{run_variant}"
 
     eos_token = transformers.AutoTokenizer.from_pretrained(
         sft_config.model_name, cache_dir=sft_config.cache_dir
@@ -255,6 +273,9 @@ def main() -> None:  # noqa: C901
     experiment_context = {
         "schema_version": "1.0.0",
         "method": args.method,
+        "run_variant": run_variant,
+        "experiment_track": experiment_track,
+        "cpdpo_alpha": args.alpha if args.method == "cpdpo" else None,
         "base_seed": args.base_seed,
         "rollout_steps": args.rollout_steps,
         "responses_per_rollout": 2 * args.prompts_per_rollout,
@@ -284,6 +305,9 @@ def main() -> None:  # noqa: C901
         "schema_version": "1.0.0",
         "experiment": "reward_overoptimization",
         "method": args.method,
+        "run_variant": run_variant,
+        "experiment_track": experiment_track,
+        "cpdpo_alpha": args.alpha if args.method == "cpdpo" else None,
         "base_seed": args.base_seed,
         "resolved_seeds": asdict(seeds),
         "rollout_steps": args.rollout_steps,
