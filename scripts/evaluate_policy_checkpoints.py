@@ -79,8 +79,10 @@ def discover_checkpoints(run_dir: Path, initial_policy: Path, updates_per_rollou
 def load_policy(path: Path, dtype, device):
     # trlx checkpoints prefix policy weights with `base_model.` and also carry
     # value/frozen-head state, so they must be loaded through the pinned wrapper.
+    # The pinned trlx loader predates pathlib support and accepts only `str` or
+    # a transformers model instance at this API boundary.
     model = AutoModelForCausalLMWithHydraValueHead.from_pretrained(
-        path, num_layers_unfrozen=2, num_value_layers_unfrozen=0, torch_dtype=dtype
+        str(path), num_layers_unfrozen=2, num_value_layers_unfrozen=0, torch_dtype=dtype
     )
     return model.eval().requires_grad_(False).to(device)
 

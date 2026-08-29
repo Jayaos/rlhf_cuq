@@ -69,6 +69,24 @@ class CPDPOMathSpecTests(unittest.TestCase):
 
 
 class CPDPOExperimentContractTests(unittest.TestCase):
+    def test_evaluator_normalizes_path_for_pinned_trlx_loader(self) -> None:
+        evaluator = ROOT / "scripts/evaluate_policy_checkpoints.py"
+        tree = ast.parse(evaluator.read_text(encoding="utf-8"))
+        load_policy = next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "load_policy"
+        )
+        loader_call = next(
+            node
+            for node in ast.walk(load_policy)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "from_pretrained"
+        )
+        self.assertTrue(loader_call.args)
+        self.assertIsInstance(loader_call.args[0], ast.Call)
+        self.assertIsInstance(loader_call.args[0].func, ast.Name)
+        self.assertEqual(loader_call.args[0].func.id, "str")
+
     def test_pinned_alpaca_gold_prompt_has_no_literal_placeholders(self) -> None:
         value = format_alpaca_gold_sample("Do it", "context", "answer")
         self.assertIn("### Instruction:\nDo it", value)
