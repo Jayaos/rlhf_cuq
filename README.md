@@ -335,12 +335,41 @@ python scripts/download_assets.py --asset-root assets --include-gold
 python scripts/download_assets.py --asset-root assets --include-gold --verify-only
 ```
 
-This does not download LLaMA-7B or reconstruct the gold RM. The revised
-evaluator bypasses the broken legacy Alpaca formatting branch and uses the
-pinned AlpacaFarm `v0_inputs_noinputs.json` templates, with a regression test
-that rejects literal placeholders. Gold evaluation must still wait until the
-licensed base is supplied and the reconstructed `model_sum.txt` validation
-passes. Never commit or redistribute licensed/reconstructed weights.
+This does not download LLaMA-7B or reconstruct the gold RM. After obtaining
+authorized access to the original LLaMA-v1 7B base, place its Hugging Face
+checkpoint on scratch and verify that `config.json`, `tokenizer.model`, the
+weight index, and every indexed weight shard are present.  Do not pass the
+license acknowledgement below merely because a mirror is technically
+downloadable; retain the authorization record with the experiment audit.
+
+The upstream AlpacaFarm recovery command resolves moving Hub repositories and
+cannot consume the pinned local differences.  Reconstruct both required
+stages offline with the checked wrapper instead:
+
+```bash
+export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
+export GOLD_LLAMA7B_PATH="$JOB_ROOT/gold-assets/llama-7b-hf"
+mkdir -p "$JOB_ROOT/logs"
+
+sbatch \
+  --export=ALL,GOLD_LLAMA_LICENSE_ACKNOWLEDGED=yes,GOLD_LLAMA7B_PATH="$GOLD_LLAMA7B_PATH" \
+  --output="$JOB_ROOT/logs/gold-rm-recover-%j.out" \
+  scripts/slurm/reconstruct_alpaca_farm_gold_rm.sbatch
+```
+
+The job consumes the two manifest-pinned difference directories, reconstructs
+`$JOB_ROOT/alpaca_farm_models/sft10k` and then
+`$JOB_ROOT/alpaca_farm_models/reward-model-human`, requires both upstream
+`model_sum.txt` checks to pass, fingerprints all inputs/outputs, and writes
+`reconstruction_metadata.json`.  It is fully offline and refuses to overwrite
+a nonempty model directory.  Use
+`$JOB_ROOT/alpaca_farm_models/reward-model-human` as `GOLD_RM_PATH` only after
+the job ends with all three `PASS reconstructed`/metadata messages.
+
+The revised evaluator bypasses the broken legacy Alpaca formatting branch and
+uses the pinned AlpacaFarm `v0_inputs_noinputs.json` templates, with a
+regression test that rejects literal placeholders. Never commit or
+redistribute licensed/reconstructed weights.
 
 ### Experiment 1: train proxy reward model(s)
 

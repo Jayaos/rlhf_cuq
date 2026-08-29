@@ -70,7 +70,7 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
 - Provide one-rollout Slurm smoke jobs and a full three-method array/job
   template that requires an explicit rollout horizon.
 
-## 7. Add isolated checkpoint evaluation and figures — done (gold asset external)
+## 7. Add isolated checkpoint evaluation and figures — done (licensed base external)
 
 - Evaluate checkpoint zero and each common scheduled checkpoint on fixed
   held-out prompts.
@@ -79,6 +79,10 @@ Status labels: `done`, `in progress`, `pending`, `blocked`.
   in a separate command.
 - Aggregate per-seed records and produce reward-vs-rollout and reward-vs-sqrt-KL
   PDF/PNG figures with a consistent uncertainty convention.
+- Recover the AlpacaFarm SFT10k and human reward model from the exact local,
+  manifest-pinned differences with fatal `model_sum.txt` checks.  The helper
+  and Slurm job are repository-managed; authorization and acquisition of the
+  original LLaMA-7B base remain external prerequisites.
 
 ## 8. Verification — in progress
 

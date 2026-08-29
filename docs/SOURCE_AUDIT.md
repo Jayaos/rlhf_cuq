@@ -39,6 +39,19 @@ The following audited Coste/Open-Assistant/trlx environment is retained:
 The complete asset revisions and file hashes remain in
 `artifacts/source_manifest.json`.
 
+The pinned AlpacaFarm `recover_model_weights.py` was also inspected before
+adding the local recovery path.  Its reconstruction arithmetic loads every
+weight difference in float32, adds the corresponding float32 LLaMA parameter
+in place (skipping only declared shape mismatches), and validates the sum of
+all reconstructed parameters with `numpy.isclose` against `model_sum.txt`.
+The upstream CLI resolves `tatsu-lab/alpaca-farm-*-wdiff` without a revision
+and does not accept a local difference directory.  The additive
+`scripts/reconstruct_alpaca_farm_gold_rm.py` wrapper therefore preserves that
+arithmetic while consuming only the two manifest-pinned, locally verified
+difference directories.  It treats either integrity-check failure as fatal,
+records source and output fingerprints, and never downloads or redistributes
+the separately licensed LLaMA base.
+
 The existing smoke tests established that:
 
 - manifest-backed proxy-RM training runs and saves a valid checkpoint;

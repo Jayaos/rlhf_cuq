@@ -220,7 +220,13 @@ python -m pretrained_models.recover_model_weights \
   --models-save-dir alpaca_farm_models
 ```
 
-The upstream recovery utility currently resolves weight-diff repositories without explicit revisions. Before use, either populate its local cache from the manifest-pinned snapshots or add a separately reviewed wrapper that supplies the revisions. Require `model_sum.txt` verification and hash the reconstructed model. Never commit or redistribute the licensed base/reconstructed weights through this repository.
+The upstream recovery utility resolves weight-diff repositories without
+explicit revisions and cannot consume local difference directories.  Use the
+reviewed `scripts/reconstruct_alpaca_farm_gold_rm.py` wrapper (or its Slurm
+launcher) with the manifest-pinned snapshots instead.  It preserves the pinned
+upstream float32 addition rule, makes `model_sum.txt` verification fatal, and
+hashes the reconstructed models.  Never commit or redistribute the licensed
+base or reconstructed weights through this repository.
 
 ## Tiny baseline smoke profile
 
