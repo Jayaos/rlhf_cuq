@@ -229,6 +229,7 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertIn(pin, wheel_constraints)
         self.assertIn("pybind11=2.11.1", environment_text)
         self.assertIn("pytest=7.4.0", environment_text)
+        self.assertIn("matplotlib=3.7.2", environment_text)
         runtime_text = (ROOT / "requirements" / "legacy-runtime.txt").read_text(
             encoding="utf-8"
         )

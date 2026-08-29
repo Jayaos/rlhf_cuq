@@ -259,6 +259,9 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         self.assertEqual({row["method"] for row in diagnostic}, {"ppo", "pairppo", "cpdpo"})
         self.assertTrue(all(row["n_seeds"] == 1 for row in diagnostic))
         self.assertTrue(all(row["proxy_reward_mean_se"] == 0.0 for row in diagnostic))
+        with mock.patch.object(module.importlib.util, "find_spec", return_value=None):
+            with self.assertRaisesRegex(ModuleNotFoundError, "matplotlib==3.7.2"):
+                module.require_plotting_dependency()
 
     def test_equal_response_proxy_and_update_budget(self) -> None:
         budgets = [

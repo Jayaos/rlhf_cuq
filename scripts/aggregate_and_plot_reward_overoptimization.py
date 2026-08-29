@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 import math
 import statistics
@@ -18,6 +19,14 @@ if str(ROOT) not in sys.path:
 
 from src.cpdpo.experiment import validate_policy_quality_record
 from src.cpdpo.spec import ALL_METHODS
+
+
+def require_plotting_dependency() -> None:
+    if importlib.util.find_spec("matplotlib") is None:
+        raise ModuleNotFoundError(
+            "Plotting requires matplotlib==3.7.2. Install the constrained runtime dependency "
+            "before rerunning; no plot artifacts have been written by this invocation."
+        )
 
 
 def mean_se(values: list[float]) -> tuple[float, float]:
@@ -196,6 +205,7 @@ def main() -> None:
         if not selected:
             raise ValueError(f"No evaluation records found for diagnostic seed {args.diagnostic_seed}")
         aggregated = aggregate(selected, minimum_seeds=1)
+        require_plotting_dependency()
         diagnostic_dir = root / "diagnostics" / f"seed_{args.diagnostic_seed}"
         if diagnostic_dir.exists() and any(diagnostic_dir.iterdir()):
             raise FileExistsError(f"Refusing to overwrite diagnostic directory: {diagnostic_dir}")
@@ -225,6 +235,7 @@ def main() -> None:
         return
 
     aggregated = aggregate(records)
+    require_plotting_dependency()
     public_records = [
         {key: value for key, value in record.items() if not key.startswith("_")}
         for record in records

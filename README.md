@@ -818,6 +818,18 @@ python scripts/aggregate_and_plot_reward_overoptimization.py \
   --diagnostic-seed 1
 ```
 
+An environment created before the plotting dependency was added can be
+repaired without reinstalling the training stack:
+
+```bash
+source scripts/configure_cluster_storage.sh \
+  "/storage/scratch1/0/$USER/rlhf-cuq"
+python -m pip install --no-cache-dir \
+  --constraint requirements/legacy-conda.constraints.txt \
+  matplotlib==3.7.2
+python -m pip check
+```
+
 This writes `reward_vs_rollout_step.{png,pdf}` and
 `reward_vs_sqrt_kl.{png,pdf}` under `diagnostics/seed_1/`. It compares PPO,
 PairPPO, and CPDPO using both proxy and gold rewards but deliberately has no

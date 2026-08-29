@@ -16,6 +16,7 @@ dependencies:
   - ninja=1.11.1
   - packaging=23.1
   - pytest=7.4.0
+  - matplotlib=3.7.2
   # fastText imports pybind11 while building. legacy-build.txt also installs
   # the CMake/lit Python metadata required by `pip check` for Triton.
   - pybind11=2.11.1
