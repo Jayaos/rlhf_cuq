@@ -19,7 +19,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alpaca_farm.models.reward_model import RewardModel
 from src.cpdpo.artifacts import canonical_json_hash, model_fingerprint, sha256_file
-from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample
+from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample, hydra_policy_logits
 from src.cpdpo.reward_features import load_proxy_feature_scorer
 from src.cpdpo.run_logging import load_rollout_records
 from src.data_utils.split_manifest import PROMPT_ID_FIELD, load_split_records, verify_split_manifest
@@ -126,7 +126,12 @@ def generate_and_kl(
                 attention_mask = generated.ne(tokenizer.pad_token_id).long()
                 position_ids = attention_mask.cumsum(-1) - 1
                 position_ids.masked_fill_(attention_mask == 0, 1)
-                policy_logits = policy(generated, attention_mask=attention_mask, position_ids=position_ids).logits
+                policy_logits = hydra_policy_logits(
+                    policy,
+                    generated,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                )
                 reference_logits = reference(generated, attention_mask=attention_mask, position_ids=position_ids).logits
                 labels = generated[:, 1:]
                 policy_logprobs = logprobs_of_labels(policy_logits[:, :-1, :], labels)

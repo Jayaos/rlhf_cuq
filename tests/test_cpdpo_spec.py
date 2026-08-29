@@ -12,7 +12,7 @@ from src.cpdpo.experiment import (
     resolve_training_budget,
     validate_policy_quality_record,
 )
-from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample
+from src.cpdpo.evaluation import checkpoint_summary, format_alpaca_gold_sample, hydra_policy_logits
 from src.cpdpo.math_spec import (
     calibration_score,
     finite_sample_quantile,
@@ -69,6 +69,35 @@ class CPDPOMathSpecTests(unittest.TestCase):
 
 
 class CPDPOExperimentContractTests(unittest.TestCase):
+    def test_evaluator_policy_logits_bypass_unused_hydra_value_head(self) -> None:
+        class Output:
+            logits = object()
+
+        class BaseModel:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def __call__(self, input_ids, **kwargs):
+                self.calls.append((input_ids, kwargs))
+                return Output()
+
+        class Policy:
+            def __init__(self) -> None:
+                self.base_model = BaseModel()
+
+            def __call__(self, *_args, **_kwargs):
+                raise AssertionError("Hydra wrapper forward would evaluate the value head")
+
+        policy = Policy()
+        input_ids = object()
+        logits = hydra_policy_logits(policy, input_ids, attention_mask="mask", position_ids="positions")
+
+        self.assertIs(logits, Output.logits)
+        self.assertEqual(
+            policy.base_model.calls,
+            [(input_ids, {"attention_mask": "mask", "position_ids": "positions"})],
+        )
+
     def test_evaluator_normalizes_path_for_pinned_trlx_loader(self) -> None:
         evaluator = ROOT / "scripts/evaluate_policy_checkpoints.py"
         tree = ast.parse(evaluator.read_text(encoding="utf-8"))

@@ -23,6 +23,11 @@ def format_alpaca_gold_sample(instruction: str, input_text: str, output: str) ->
     return template.format(instruction=instruction, input=input_text) + output
 
 
+def hydra_policy_logits(policy, input_ids, **forward_kwargs):
+    """Return policy LM logits without evaluating the unused PPO value head."""
+    return policy.base_model(input_ids, **forward_kwargs).logits
+
+
 def mean_and_sample_std(values: Iterable[float]) -> tuple[float, float]:
     items = [float(value) for value in values]
     if not items or not all(math.isfinite(value) for value in items):
