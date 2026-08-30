@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import csv
 import importlib.util
 import json
 import tempfile
@@ -320,6 +321,36 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         cpdpo = next(row for row in selected if row["method"] == "cpdpo")
         self.assertEqual(cpdpo["proxy_reward_mean"], 4.0)
         self.assertEqual(cpdpo["_cpdpo_alpha"], 0.20)
+
+    def test_plot_csv_accepts_method_specific_provenance_fields(self) -> None:
+        module_path = ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py"
+        spec = importlib.util.spec_from_file_location("cpdpo_csv_plot_script", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        rows = [
+            {"method": "ppo", "reward": 1.0},
+            {
+                "method": "cpdpo",
+                "reward": 2.0,
+                "run_variant": "cpdpo_alpha_0p3",
+                "cpdpo_alpha": 0.30,
+                "experiment_track": "alpha_ablation",
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "metrics.csv"
+            module.write_csv(path, rows)
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                written = list(reader)
+
+        self.assertEqual(
+            reader.fieldnames,
+            ["method", "reward", "run_variant", "cpdpo_alpha", "experiment_track"],
+        )
+        self.assertEqual(written[0]["cpdpo_alpha"], "")
+        self.assertEqual(written[1]["run_variant"], "cpdpo_alpha_0p3")
+        self.assertEqual(written[1]["cpdpo_alpha"], "0.3")
 
     def test_equal_response_proxy_and_update_budget(self) -> None:
         budgets = [

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib.util
+import io
 import json
 import math
 import statistics
@@ -155,11 +156,20 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
+    if not rows:
+        raise ValueError(f"Cannot write an empty CSV: {path}")
+    # Evaluation records intentionally carry method-specific provenance.  In
+    # particular, CPDPO rows include alpha/run-track fields that are absent
+    # from the PPO and PairPPO controls.  Build a stable union instead of
+    # assuming that the first row defines the complete schema.
+    fieldnames = list(dict.fromkeys(key for row in rows for key in row))
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
+        handle.write(buffer.getvalue())
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
