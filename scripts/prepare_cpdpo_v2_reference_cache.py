@@ -28,7 +28,11 @@ from src.cpdpo.artifacts import (
     tokenizer_fingerprint,
 )
 from src.cpdpo.pair_reward import PairRewardCallback
-from src.cpdpo.reference_anchor import REFERENCE_CACHE_SCHEMA, REFERENCE_GENERATION_SEED_OFFSET
+from src.cpdpo.reference_anchor import (
+    REFERENCE_CACHE_SCHEMA,
+    REFERENCE_GENERATION_SEED_OFFSET,
+    REFERENCE_PROMPT_CANONICALIZATION,
+)
 from src.cpdpo.spec import ALPHA, CPDPOConfig, is_main_alpha
 
 
@@ -102,6 +106,7 @@ def generate_references(rows, *, policy_path: Path, batch_size: int, device: tor
     ]
     responses: list[str] = []
     response_token_ids: list[list[int]] = []
+    canonical_proxy_prompts: list[str] = []
     devices = [device.index if device.index is not None else torch.cuda.current_device()] if device.type == "cuda" else []
     with torch.random.fork_rng(devices=devices):
         torch.manual_seed(seed)
@@ -117,6 +122,12 @@ def generate_references(rows, *, policy_path: Path, batch_size: int, device: tor
                 return_tensors="pt",
             ).to(device)
             prompt_width = tokenized.input_ids.shape[1]
+            # TRLX later passes tokenizer-decoded prompt tensors to reward_fn.
+            # Cache that exact canonical text instead of the raw schedule text;
+            # GPT-NeoX decoding can normalize whitespace for some prompts.
+            canonical_proxy_prompts.extend(
+                tokenizer.batch_decode(tokenized.input_ids, skip_special_tokens=True)
+            )
             with torch.no_grad():
                 generated = model.generate(
                     **tokenized,
@@ -136,7 +147,7 @@ def generate_references(rows, *, policy_path: Path, batch_size: int, device: tor
     gc.collect()
     if device.type == "cuda":
         torch.cuda.empty_cache()
-    return tokenizer, raw_prompts, responses, response_token_ids
+    return tokenizer, canonical_proxy_prompts, responses, response_token_ids
 
 
 def atomic_torch_save(path: Path, value) -> None:
@@ -174,7 +185,7 @@ def main() -> None:
     dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[args.dtype]
     device = torch.device(args.device)
     reference_seed = args.base_seed + REFERENCE_GENERATION_SEED_OFFSET
-    _policy_tokenizer, raw_prompts, responses, response_token_ids = generate_references(
+    _policy_tokenizer, proxy_prompts, responses, response_token_ids = generate_references(
         rows,
         policy_path=policy_path,
         batch_size=args.batch_size,
@@ -193,7 +204,7 @@ def main() -> None:
         data_manifest_path=str(manifest),
         allow_smoke_artifacts=args.allow_smoke_artifacts,
     )
-    reference_rewards, reference_features = artifact_loader.scorer.score(raw_prompts, responses)
+    reference_rewards, reference_features = artifact_loader.scorer.score(proxy_prompts, responses)
     prompt_ids = [row["prompt_id"] for row in rows]
     response_ids = [
         canonical_json_hash([prompt_id, token_ids])
@@ -202,7 +213,7 @@ def main() -> None:
     response_path = output / "reference_responses.jsonl"
     with response_path.open("x", encoding="utf-8", newline="\n") as handle:
         for row, prompt, response, token_ids, response_id in zip(
-            rows, raw_prompts, responses, response_token_ids, response_ids
+            rows, proxy_prompts, responses, response_token_ids, response_ids
         ):
             handle.write(
                 json.dumps(
@@ -224,7 +235,7 @@ def main() -> None:
         {
             "schema_version": REFERENCE_CACHE_SCHEMA,
             "prompt_ids": prompt_ids,
-            "prompts": raw_prompts,
+            "prompts": proxy_prompts,
             "responses": responses,
             "response_token_ids": response_token_ids,
             "reference_rewards": reference_rewards.detach().float().cpu(),
@@ -233,6 +244,7 @@ def main() -> None:
     )
     metadata = {
         "schema_version": REFERENCE_CACHE_SCHEMA,
+        "prompt_canonicalization": REFERENCE_PROMPT_CANONICALIZATION,
         "method": "cpdpo_v2",
         "experiment_track": "main" if is_main_alpha(args.alpha) else "cpdpo_v2_alpha_ablation",
         "source_role": "D_rl_train_prompts",

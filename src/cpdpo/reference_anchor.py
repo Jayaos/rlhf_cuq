@@ -14,8 +14,9 @@ from src.cpdpo.pair_reward import PairRewardCallback
 from src.cpdpo.spec import CPDPOConfig, CPDPOV2Config, is_main_alpha
 
 
-REFERENCE_CACHE_SCHEMA = "1.0.0"
+REFERENCE_CACHE_SCHEMA = "1.1.0"
 REFERENCE_GENERATION_SEED_OFFSET = 40_000
+REFERENCE_PROMPT_CANONICALIZATION = "policy_tokenizer_decode_skip_special_tokens_v1"
 
 
 def _finite_tensor(name: str, value: torch.Tensor) -> None:
@@ -140,6 +141,8 @@ class ReferenceAnchoredRewardCallback:
     ) -> None:
         if value.get("schema_version") != REFERENCE_CACHE_SCHEMA:
             raise ValueError("Unsupported CPDPOv2 reference cache schema")
+        if value.get("prompt_canonicalization") != REFERENCE_PROMPT_CANONICALIZATION:
+            raise ValueError("Unsupported CPDPOv2 reference prompt canonicalization")
         if value.get("method") != "cpdpo_v2" or value.get("source_role") != "D_rl_train_prompts":
             raise ValueError("Invalid CPDPOv2 reference cache identity")
         if value.get("reference_cache_fingerprint") != self.reference_cache_fingerprint:
@@ -288,7 +291,16 @@ class ReferenceAnchoredRewardCallback:
             raise ValueError(f"CPDPOv2 reference cache is missing prompt ID {exc.args[0]}") from exc
         expected_prompts = [self.prompts[index] for index in indices]
         if list(prompts) != expected_prompts:
-            raise ValueError("CPDPOv2 prompt text does not match the immutable reference cache")
+            mismatch = next(
+                index
+                for index, (observed, expected) in enumerate(zip(prompts, expected_prompts))
+                if observed != expected
+            )
+            raise ValueError(
+                "CPDPOv2 tokenizer-canonical prompt mismatch for "
+                f"prompt_id={prompt_ids[mismatch]}: "
+                f"observed={prompts[mismatch]!r}, cached={expected_prompts[mismatch]!r}"
+            )
         reference_rewards = self.reference_rewards[indices]
         reference_features = self.reference_features[indices]
         differences = current_features.float() - reference_features

@@ -485,6 +485,18 @@ class CPDPOExperimentContractTests(unittest.TestCase):
         self.assertIn("--method cpdpo_v2", smoke_job)
         self.assertNotIn("cpdpo_v2", v1_job)
 
+    def test_cpdpo_v2_reference_cache_uses_training_prompt_canonicalization(self) -> None:
+        builder = (ROOT / "scripts/prepare_cpdpo_v2_reference_cache.py").read_text(
+            encoding="utf-8"
+        )
+        consumer = (ROOT / "src/cpdpo/reference_anchor.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "tokenizer.batch_decode(tokenized.input_ids, skip_special_tokens=True)", builder
+        )
+        self.assertIn("REFERENCE_PROMPT_CANONICALIZATION", builder)
+        self.assertIn('REFERENCE_CACHE_SCHEMA = "1.1.0"', consumer)
+        self.assertIn("Unsupported CPDPOv2 reference prompt canonicalization", consumer)
+
     def test_smoke_artifacts_require_an_explicit_smoke_only_training_opt_in(self) -> None:
         smoke_job = (ROOT / "scripts/slurm/smoke_reward_overoptimization.sbatch").read_text(encoding="utf-8")
         full_job = (ROOT / "scripts/slurm/train_reward_overoptimization.sbatch").read_text(encoding="utf-8")

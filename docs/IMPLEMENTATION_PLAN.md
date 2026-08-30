@@ -133,3 +133,6 @@ training.
 - Add separate smoke/full/evaluation jobs and optional four-method plotting.
 - Test the reward identity, common-mode sensitivity, cache provenance,
   no-gold access, budget equality, and v1 regression behavior.
+- Canonicalize cached prompts through the same policy-tokenizer decode boundary
+  used by TRLX reward callbacks; reject pre-1.1 caches built from raw schedule
+  text before training begins.
