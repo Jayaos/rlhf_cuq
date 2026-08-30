@@ -33,6 +33,7 @@ Use this section for the audited cluster workflow. The historical upstream instr
 | Coste ensemble PPO | Reproduce Coste mean/WCO/UWO behavior | Policy + prompts + five trained RMs | Retained as an optional legacy path; out of scope for the primary CPDPO experiment |
 | CPDPO offline artifacts | Build pair geometry on `D_rm_train` and fixed calibration on `D_cal` | Full seed-1 proxy RM | Implemented; GPU smoke still required |
 | PPO / PairPPO / CPDPO | Controlled reward-overoptimization comparison | Shared policy, proxy RM, prompt schedule, and response budget | Implemented as additive trainers; cluster smoke still required |
+| CPDPOv2 exploratory track | Fixed-SFT reference-anchored robust proxy PPO | Existing full CPDPO artifacts plus an immutable per-schedule SFT reference cache | Implemented additively; run the dedicated cluster smoke before a full launch |
 | Offline common evaluation | Score the same saved response with proxy RM, gold RM, and sampled KL | Reconstructed AlpacaFarm 7B RM | Code implemented; licensed gold reconstruction/checksum remains an external prerequisite |
 
 The revised primary experiment uses one seed-1 proxy RM, frozen and shared by
@@ -906,6 +907,78 @@ The ablation plots are isolated under
 `alpha_ablations/alpha_0p2/diagnostics/seed_1/`; they do not overwrite the
 main-alpha plots. The legend records the selected alpha. Do not use
 `D_rl_test_prompts` to choose an alpha.
+
+### Exploratory CPDPOv2: fixed SFT reference anchor
+
+CPDPOv2 is additive: it does not modify the PPO, PairPPO, or CPDPOv1 runs
+above. It compares each current response with one immutable response sampled
+once from the initial SFT policy and optimizes the continuous terminal reward
+
+```text
+(proxy_current - proxy_SFT) - q_alpha * uncertainty(current - SFT).
+```
+
+The cached SFT response has no PPO ratio, advantage, or gradient. Every
+rollout still generates two current responses for each of 256 prompts, so v2
+uses the same 512 trainable trajectories, 512 online proxy calls, and 32
+optimizer updates as scalar PPO. The one-time SFT generations and proxy calls
+are recorded separately in the reference-cache metadata.
+
+First run the complete end-to-end smoke. It prepares a two-prompt cache and
+performs one real PPO rollout:
+
+```bash
+sbatch scripts/slurm/smoke_cpdpo_v2.sbatch
+```
+
+Both its reference-cache and output directories must be empty before a retry.
+The default uses the full seed-1 v1 geometry/calibration. If deliberately using
+the reduced smoke artifacts, export their path and the explicit opt-in:
+
+```bash
+sbatch --export=ALL,CPDPO_ARTIFACT_DIR=artifacts/cpdpo/proxy_rm_smoke_seed1_quick,CPDPO_ALLOW_SMOKE_ARTIFACTS=1 \
+  scripts/slurm/smoke_cpdpo_v2.sbatch
+```
+
+For the full seed-1 schedule, prepare the immutable references once and then
+launch only v2. These commands reuse the existing policy, proxy RM, manifest,
+prompt schedule, and full CPDPOv1 artifacts:
+
+```bash
+sbatch --export=ALL,CPDPO_V2_SEED=1 \
+  scripts/slurm/prepare_cpdpo_v2_references.sbatch
+
+sbatch --array=1 --export=ALL,ROLLOUT_STEPS=100 \
+  scripts/slurm/train_cpdpo_v2.sbatch
+```
+
+`train_cpdpo_v2.sbatch` uses seed numbers as array IDs (`1`, `2`, `3`), unlike
+the three-method v1 array. For an alpha ablation, export the same
+`CPDPO_ALPHA` while building v1 artifacts, preparing references, training, and
+evaluation. Fingerprints reject a schedule, policy, proxy, alpha, geometry, or
+calibration mismatch.
+
+Evaluate seed 1 with the existing isolated evaluator and add v2 to the current
+diagnostic plots:
+
+```bash
+sbatch --array=1 \
+  --export=ALL,GOLD_RM_PATH="$GOLD_RM_PATH" \
+  scripts/slurm/evaluate_cpdpo_v2.sbatch
+
+python scripts/aggregate_and_plot_reward_overoptimization.py \
+  --output-root /storage/scratch1/0/$USER/rlhf-cuq/outputs/reward_overoptimization \
+  --split D_rl_val_prompts \
+  --diagnostic-seed 1 \
+  --include-cpdpo-v2
+```
+
+The four-method diagnostic is isolated under
+`cpdpo_v2_comparison/diagnostics/seed_1/` and does not overwrite the v1 plot.
+The conformal threshold was calibrated on Coste source preference pairs, not
+current/SFT pairs. Its use in v2 therefore assumes exchangeability and should
+be reported as an exploratory reference-anchored robust proxy margin, not as a
+finite-sample guarantee on gold reward.
 
 ### Legacy experiment: checked-code PPO baseline on the strict split
 

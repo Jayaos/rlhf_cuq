@@ -26,13 +26,14 @@ from src.cpdpo.math_spec import (
     finite_sample_quantile,
     finite_sample_quantile_rank,
     pair_signal,
+    reference_anchored_signal,
 )
 from src.cpdpo.prompt_schedule import (
     ExperimentSeeds,
     build_prompt_schedule,
     load_schedule_as_duplicated_prompts,
 )
-from src.cpdpo.spec import ALPHA, CPDPOConfig, alpha_tag, method_run_name
+from src.cpdpo.spec import ALPHA, CPDPOConfig, CPDPOV2Config, alpha_tag, method_run_name
 from src.cpdpo.run_logging import (
     append_rollout_record,
     archive_pair_rollouts_after_checkpoint,
@@ -81,9 +82,25 @@ class CPDPOMathSpecTests(unittest.TestCase):
         self.assertEqual(method_run_name("cpdpo", 0.10), "cpdpo")
         self.assertEqual(method_run_name("cpdpo", 0.20), "cpdpo_alpha_0p2")
         self.assertEqual(method_run_name("ppo", 0.10), "ppo")
+        self.assertEqual(method_run_name("cpdpo_v2", 0.10), "cpdpo_v2")
+        self.assertEqual(method_run_name("cpdpo_v2", 0.20), "cpdpo_v2_alpha_0p2")
         self.assertEqual(CPDPOConfig(method="cpdpo", alpha=0.20).alpha, 0.20)
         with self.assertRaisesRegex(ValueError, "alpha"):
             CPDPOConfig(method="cpdpo", alpha=1.0)
+
+    def test_cpdpo_v2_reward_is_directed_continuous_and_common_mode_sensitive(self) -> None:
+        signal = reference_anchored_signal(3.0, 2.0, 0.5, 0.4, 1e-8)
+        self.assertAlmostEqual(signal["reward"], 0.8)
+        self.assertTrue(signal["certified_current_better"])
+        shifted = reference_anchored_signal(5.0, 2.0, 0.5, 0.4, 1e-8)
+        self.assertAlmostEqual(shifted["reward"] - signal["reward"], 2.0)
+        uncertified = reference_anchored_signal(1.0, 2.0, 0.5, 0.4, 1e-8)
+        self.assertLess(uncertified["reward"], 0.0)
+        self.assertFalse(uncertified["certified_current_better"])
+        config = CPDPOV2Config()
+        self.assertEqual(config.method, "cpdpo_v2")
+        with self.assertRaisesRegex(ValueError, "reward_scale"):
+            CPDPOV2Config(reward_scale=2.0)
 
 
 class CPDPOExperimentContractTests(unittest.TestCase):
@@ -362,6 +379,50 @@ class CPDPOExperimentContractTests(unittest.TestCase):
             self.assertEqual(budget.response_count_per_rollout, 512)
             self.assertEqual(budget.proxy_rm_calls_per_rollout, 512)
             self.assertEqual(budget.optimizer_updates_per_rollout, 32)
+        v2 = resolve_training_budget(
+            "cpdpo_v2", prompts_per_rollout=256, pair_batch_size=32, ppo_epochs=4
+        )
+        self.assertEqual(v2.response_count_per_rollout, 512)
+        self.assertEqual(v2.proxy_rm_calls_per_rollout, 512)
+        self.assertEqual(v2.optimizer_updates_per_rollout, 32)
+        self.assertEqual(v2.trainer_rollout_units, 512)
+        self.assertEqual(v2.trainer_batch_units, 64)
+
+    def test_four_method_diagnostic_accepts_additive_cpdpo_v2(self) -> None:
+        module_path = ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py"
+        spec = importlib.util.spec_from_file_location("cpdpo_v2_plot_script", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        records = []
+        for method in ("ppo", "pairppo", "cpdpo", "cpdpo_v2"):
+            records.append(
+                {
+                    "method": method,
+                    "seed": 1,
+                    "rollout_step": 0,
+                    "proxy_reward_mean": 1.0,
+                    "gold_reward_mean": 2.0,
+                    "eval_kl_mean": 0.0,
+                    "sqrt_eval_kl": 0.0,
+                    "generated_responses": 0,
+                    "proxy_rm_calls": 0,
+                    "initial_policy_fingerprint": "initial",
+                    "policy_checkpoint_fingerprint": "initial",
+                    "reference_policy_fingerprint": "reference",
+                    "proxy_rm_fingerprint": "proxy",
+                    "gold_rm_fingerprint": "gold",
+                    "evaluation_manifest_sha256": "manifest",
+                    "evaluation_prompt_ids_sha256": "eval-prompts",
+                    "_prompt_schedule_sha256": "schedule",
+                    "_prompt_id_sequence_sha256": "prompt-ids",
+                    "_cpdpo_alpha": 0.10 if method in {"cpdpo", "cpdpo_v2"} else None,
+                }
+            )
+        diagnostic = module.aggregate(records, minimum_seeds=1)
+        self.assertEqual(
+            {row["method"] for row in diagnostic},
+            {"ppo", "pairppo", "cpdpo", "cpdpo_v2"},
+        )
 
     def test_seed_namespaces_and_prompt_schedule_are_deterministic(self) -> None:
         seeds = ExperimentSeeds.from_base(7)
@@ -400,6 +461,29 @@ class CPDPOExperimentContractTests(unittest.TestCase):
             if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
         }
         self.assertFalse(any("gold" in option.lower() for option in option_strings))
+        reference_builder = ROOT / "scripts/prepare_cpdpo_v2_reference_cache.py"
+        reference_tree = ast.parse(reference_builder.read_text(encoding="utf-8"))
+        reference_options = {
+            argument.value
+            for call in ast.walk(reference_tree)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "add_argument"
+            for argument in call.args
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        }
+        self.assertFalse(any("gold" in option.lower() for option in reference_options))
+
+    def test_cpdpo_v2_jobs_are_additive_and_use_scalar_ppo(self) -> None:
+        trainer = (ROOT / "src/ppo/trainer_reward_overoptimization.py").read_text(encoding="utf-8")
+        full_job = (ROOT / "scripts/slurm/train_cpdpo_v2.sbatch").read_text(encoding="utf-8")
+        smoke_job = (ROOT / "scripts/slurm/smoke_cpdpo_v2.sbatch").read_text(encoding="utf-8")
+        v1_job = (ROOT / "scripts/slurm/train_reward_overoptimization.sbatch").read_text(encoding="utf-8")
+        self.assertIn('args.method == "cpdpo_v2"', trainer)
+        self.assertIn('trlx_config.train.trainer = "ExperimentAcceleratePPOTrainer"', trainer)
+        self.assertIn("--method cpdpo_v2", full_job)
+        self.assertIn("--method cpdpo_v2", smoke_job)
+        self.assertNotIn("cpdpo_v2", v1_job)
 
     def test_smoke_artifacts_require_an_explicit_smoke_only_training_opt_in(self) -> None:
         smoke_job = (ROOT / "scripts/slurm/smoke_reward_overoptimization.sbatch").read_text(encoding="utf-8")

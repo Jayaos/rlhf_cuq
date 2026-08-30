@@ -62,3 +62,28 @@ def pair_signal(
         "gamma": gamma,
         "reward": reward,
     }
+
+
+def reference_anchored_signal(
+    current_reward: float,
+    reference_reward: float,
+    uncertainty: float,
+    q_alpha: float,
+    epsilon: float,
+) -> dict[str, float | bool]:
+    """Scalar reference equation for the exploratory CPDPOv2 reward."""
+
+    values = (current_reward, reference_reward, uncertainty, q_alpha, epsilon)
+    if not all(math.isfinite(float(value)) for value in values):
+        raise ValueError("CPDPOv2 signal inputs must be finite")
+    if uncertainty < 0.0 or q_alpha < 0.0 or epsilon <= 0.0:
+        raise ValueError("uncertainty/q must be nonnegative and epsilon positive")
+    margin = current_reward - reference_reward
+    normalized_margin = abs(margin) / (uncertainty + epsilon)
+    return {
+        "margin": margin,
+        "uncertainty": uncertainty,
+        "normalized_margin": normalized_margin,
+        "certified_current_better": margin > 0.0 and normalized_margin > q_alpha,
+        "reward": margin - q_alpha * uncertainty,
+    }

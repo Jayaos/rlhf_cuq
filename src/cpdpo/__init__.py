@@ -7,6 +7,7 @@ from src.cpdpo.spec import (
     RIDGE_SCALE,
     ZERO_TRACE_RIDGE,
     CPDPOConfig,
+    CPDPOV2Config,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "RIDGE_SCALE",
     "ZERO_TRACE_RIDGE",
     "CPDPOConfig",
+    "CPDPOV2Config",
 ]

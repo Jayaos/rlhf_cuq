@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from src.cpdpo.spec import ALL_METHODS
+from src.cpdpo.spec import ALL_METHODS, TRAINING_METHODS
 
 
 FORBIDDEN_POLICY_QUALITY_FIELDS = frozenset(
@@ -30,12 +30,12 @@ def resolve_training_budget(
     pair_batch_size: int,
     ppo_epochs: int,
 ) -> TrainingBudget:
-    if method not in ALL_METHODS:
+    if method not in TRAINING_METHODS:
         raise ValueError(f"Unknown method: {method}")
     if prompts_per_rollout < 1 or pair_batch_size < 1 or ppo_epochs < 1:
         raise ValueError("Budget values must be positive")
     responses = 2 * prompts_per_rollout
-    if method == "ppo":
+    if method in {"ppo", "cpdpo_v2"}:
         rollout_units = responses
         batch_units = 2 * pair_batch_size
     else:

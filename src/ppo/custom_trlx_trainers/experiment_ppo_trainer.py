@@ -55,22 +55,28 @@ class ExperimentAcceleratePPOTrainer(ExperimentCheckpointMixin, CustomAccelerate
             return super().generate_eval(input_ids, attention_mask=attention_mask, **kwargs)
 
     def make_experience(self, num_rollouts: int = 512, iter_count: int = 0):
+        collector = self.reward_fn if hasattr(self.reward_fn, "start_rollout") else None
+        if collector is not None:
+            collector.start_rollout()
         super().make_experience(num_rollouts, iter_count)
         if self.accelerator.is_main_process:
             updates_per_rollout = (
                 self.config.method.num_rollouts // self.config.train.batch_size
             ) * self.config.method.ppo_epochs
+            record = {
+                "schema_version": "1.0.0",
+                "method": self.experiment_context["method"],
+                "rollout_step": iter_count // updates_per_rollout + 1,
+                "response_count": len(self.store.history),
+                "generated_token_count": sum(
+                    int(element.response_tensor.ne(self.tokenizer.pad_token_id).sum().item())
+                    for element in self.store.history
+                ),
+                "proxy_call_count": len(self.store.history),
+            }
+            if collector is not None:
+                record.update(collector.finish_rollout(expected_responses=len(self.store.history)))
             append_rollout_record(
                 self.config.train.output_dir,
-                {
-                    "schema_version": "1.0.0",
-                    "method": "ppo",
-                    "rollout_step": iter_count // updates_per_rollout + 1,
-                    "response_count": len(self.store.history),
-                    "generated_token_count": sum(
-                        int(element.response_tensor.ne(self.tokenizer.pad_token_id).sum().item())
-                        for element in self.store.history
-                    ),
-                    "proxy_call_count": len(self.store.history),
-                },
+                record,
             )

@@ -331,3 +331,33 @@ scripts/
 
 The original `trainer_rl.py`, `CustomAcceleratePPOTrainer`, proxy scorer, and
 legacy configs remain regression baselines.
+
+## 16. Additive CPDPOv2 exploratory track
+
+The user authorized an additive `cpdpo_v2` experiment after the frozen v1
+result exposed common-mode cancellation in current-policy/current-policy
+feature differences. This track does not replace or modify the three-method
+v1 comparison above.
+
+For every scheduled prompt, v2 caches exactly one response sampled once from
+the frozen initial SFT policy. Each rollout still generates two current-policy
+responses per prompt. Cached responses are context only: they never receive an
+importance ratio, advantage, loss term, or gradient.
+
+```text
+d_ref = e(x,y) - e(x,y_ref)
+m_ref = r_hat(x,y) - r_hat(x,y_ref)
+u_ref = sqrt(d_ref^T V^-1 d_ref)
+R_v2 = m_ref - q_alpha * u_ref
+```
+
+`V` and `q_alpha` are the immutable v1 artifacts. There is no positive-part
+gate. `R_v2` is a terminal scalar reward optimized with the ordinary PPO value
+head, GAE, and token-wise clipped loss.
+
+The v1 calibration labels compare Coste source responses, not online responses
+against SFT responses. Applying its threshold to `d_ref` therefore requires an
+explicit exchangeability assumption. Call `R_v2` a reference-anchored robust
+proxy margin, not a guaranteed lower bound on gold reward. Gold remains
+evaluation-only. Use separate cache, run, evaluation, and plot identities for
+v2, and preserve all existing v1 public interfaces.

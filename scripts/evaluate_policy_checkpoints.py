@@ -210,8 +210,9 @@ def main() -> None:  # noqa: C901
     if run_dir.name != run_variant:
         raise ValueError(f"Run directory name does not match run metadata: {run_dir.name} != {run_variant}")
     cpdpo_alpha = metadata.get("cpdpo_alpha")
-    if metadata["method"] == "cpdpo" and cpdpo_alpha is None:
-        cpdpo_alpha = (metadata.get("pair_method") or {}).get("alpha")
+    if metadata["method"] in {"cpdpo", "cpdpo_v2"} and cpdpo_alpha is None:
+        config_key = "pair_method" if metadata["method"] == "cpdpo" else "cpdpo_v2"
+        cpdpo_alpha = (metadata.get(config_key) or {}).get("alpha")
     manifest = Path(args.manifest).resolve()
     verify_split_manifest(manifest)
     manifest_fingerprint = sha256_file(manifest)
@@ -250,6 +251,8 @@ def main() -> None:  # noqa: C901
             "pair_artifacts": metadata["pair_artifacts"],
             "code_revision": metadata["code_revision"],
         }
+        if "reference_anchor" in metadata:
+            expected["reference_anchor"] = metadata["reference_anchor"]
         for key in ("run_variant", "experiment_track", "cpdpo_alpha"):
             if key in metadata:
                 expected[key] = metadata[key]
@@ -376,6 +379,7 @@ def main() -> None:  # noqa: C901
                 if rollout_step == 0
                 else rollout_records[rollout_step]
             )
+            method_artifacts = metadata.get("pair_artifacts") or metadata.get("reference_anchor") or {}
             record = {
                 "schema_version": "1.0.0",
                 "experiment": "reward_overoptimization",
@@ -398,13 +402,17 @@ def main() -> None:  # noqa: C901
                 "reference_policy_fingerprint": metadata["reference_policy_fingerprint"],
                 "proxy_rm_fingerprint": metadata["proxy_rm_fingerprint"],
                 "gold_rm_fingerprint": gold_rm_fingerprint,
-                "geometry_fingerprint": (metadata.get("pair_artifacts") or {}).get("geometry_fingerprint"),
-                "calibration_fingerprint": (metadata.get("pair_artifacts") or {}).get("calibration_fingerprint"),
-                "q_alpha": (metadata.get("pair_artifacts") or {}).get("q_alpha"),
+                "geometry_fingerprint": method_artifacts.get("geometry_fingerprint"),
+                "calibration_fingerprint": method_artifacts.get("calibration_fingerprint"),
+                "q_alpha": method_artifacts.get("q_alpha"),
                 "certification_rate": (
                     training_counts.get("pair/certification_rate")
                     if metadata["method"] == "cpdpo" and rollout_step > 0
-                    else None
+                    else (
+                        training_counts.get("cpdpo_v2_certified_current_better_rate")
+                        if metadata["method"] == "cpdpo_v2" and rollout_step > 0
+                        else None
+                    )
                 ),
                 "evaluation_split": args.split,
                 "evaluation_manifest_sha256": manifest_fingerprint,
@@ -414,6 +422,17 @@ def main() -> None:  # noqa: C901
                 "response_ids_sha256": canonical_json_hash([row["response_id"] for row in selected]),
                 **summary,
             }
+            if metadata["method"] == "cpdpo_v2":
+                record.update(
+                    {
+                        "reference_cache_fingerprint": method_artifacts.get(
+                            "reference_cache_fingerprint"
+                        ),
+                        "reference_response_records_fingerprint": method_artifacts.get(
+                            "reference_responses_fingerprint"
+                        ),
+                    }
+                )
             metric_records.append(record)
             handle.write(json.dumps(record, sort_keys=True) + "\n")
     metrics_csv_path = output_dir / "checkpoint_metrics.csv"

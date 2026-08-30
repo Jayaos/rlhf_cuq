@@ -119,3 +119,17 @@ materialized schedule, pair artifacts validate against the proxy checkpoint,
 the smoke matrix finishes without gold access, the separate evaluator emits
 common checkpoint records, and both plots can be rebuilt without rerunning
 training.
+
+## 9. Add reference-anchored CPDPOv2 — done (cluster smoke pending)
+
+- Preserve all v1 names, artifacts, trainers, launch arrays, and plot defaults.
+- Cache one frozen-SFT response plus proxy reward/head feature per unique
+  scheduled prompt with complete policy/proxy/schedule provenance.
+- Reuse and validate the full v1 geometry and fixed calibration threshold.
+- Score both current trajectories with `m_ref - q_alpha*u_ref`.
+- Optimize only current trajectories through ordinary scalar PPO/GAE.
+- Keep online response/proxy-call/update budgets equal to scalar PPO and record
+  reference preparation cost separately.
+- Add separate smoke/full/evaluation jobs and optional four-method plotting.
+- Test the reward identity, common-mode sensitivity, cache provenance,
+  no-gold access, budget equality, and v1 regression behavior.

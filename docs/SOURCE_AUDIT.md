@@ -218,3 +218,27 @@ held-out RL prompt roles.
 - reduced-data artifact builds are explicitly tagged `smoke`, require a
   smoke-only trainer opt-in, and are rejected by the full scientific launch;
   full artifacts continue to consume complete manifest roles.
+
+## Additive CPDPOv2 authorization and audit
+
+On 2026-08-29 the user authorized an additive CPDPOv2 track motivated by the
+single-seed v1 diagnostic. This is a new experiment, not an amendment to the
+two hashed 2026-08-27 specifications. The v1 implementation remains frozen.
+
+The audited seam is `ExperimentAcceleratePPOTrainer`: its reward callback
+receives gathered `prompt_id` metadata, and its scalar path already retains the
+value head, GAE, old-policy ratios, frozen-reference KL, checkpointing, and the
+fair 512-trajectory budget. V2 supplies one terminal scalar reward per current
+trajectory; the cached response is never treated as on-policy.
+
+```text
+R_v2(x,y;y_ref) = [r_hat(x,y)-r_hat(x,y_ref)]
+                  - q_alpha ||L^-1[e(x,y)-e(x,y_ref)]||_2.
+```
+
+The SFT response and its proxy reward/head feature are persisted once. Its
+offline proxy calls are recorded separately from the matched online budget.
+Reusing the v1 threshold assumes exchangeability between calibration
+differences and future current/SFT differences; it is not a gold-reward bound.
+V2 logs distribution-shift diagnostics, and neither preparation nor training
+accepts a gold checkpoint.

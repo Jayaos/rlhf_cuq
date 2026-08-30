@@ -49,3 +49,20 @@ Gold reward cannot be used to select alpha.
 - best-of-K or resampling until certification;
 - a learned pairwise critic or GAE over `+/-R`;
 - gold-driven selection, calibration, early stopping, or optimization.
+
+## Frozen for the additive CPDPOv2 exploratory track
+
+- method identity `cpdpo_v2`; v1 `cpdpo` remains unchanged;
+- one stochastic SFT response cached once per unique scheduled prompt;
+- reference-generation seed `base_seed + 40000` and rollout generation settings;
+- two current-policy responses and 512 trainable trajectories per main rollout;
+- the same full v1 `V`, fixed `q_alpha`, and alpha identity;
+- directed orientation `current - fixed_SFT`;
+- continuous `R_v2 = m_ref - q_alpha*u_ref`, including negative values;
+- ordinary scalar PPO value head, GAE, and clipped loss;
+- no ratio, advantage, gradient, or regeneration for the cached response;
+- no additional reward normalization in the first v2 diagnostic;
+- separate v2 artifact/run/evaluation names and gold isolation.
+
+Applying source-pair calibration to current/SFT pairs assumes exchangeability.
+Report v2 as an exploratory robust proxy method, not a gold-reward guarantee.
