@@ -50,6 +50,10 @@ Gold reward cannot be used to select alpha.
 - a learned pairwise critic or GAE over `+/-R`;
 - gold-driven selection, calibration, early stopping, or optimization.
 
+AdvPO remains out of scope for the frozen v1 comparison. The user's later
+2026-08-30 request authorizes it only as an additive, separately named
+comparison branch.
+
 ## Frozen for the additive CPDPOv2 exploratory track
 
 - method identity `cpdpo_v2`; v1 `cpdpo` remains unchanged;
@@ -66,3 +70,27 @@ Gold reward cannot be used to select alpha.
 
 Applying source-pair calibration to current/SFT pairs assumes exchangeability.
 Report v2 as an exploratory robust proxy method, not a gold-reward guarantee.
+
+## Frozen for the additive AdvPO branch
+
+- paper Eq. (4) confidence matrix from individual `D_rm_train` response
+  features, with no `1/n` normalization and no CPDPO pair differences;
+- paper Eq. (6)--(7) fixed-reference max-min objective and its one shared
+  batch-level adversarial projection direction;
+- fixed SFT-generated references, which the paper explicitly permits and
+  which fit the prompt-disjoint AlpacaFarm PPO prompts;
+- ordinary scalar PPO value loss, GAE, and clipped loss;
+- no conformal calibration, certification gate, pair loss, or gold access;
+- one declared `B=b^2` per named run; the paper's reported grid is
+  `[1, 5, 10, 15]`;
+- dynamic scaling that restores the adversarial reward's running mean to the
+  original proxy reward running mean, with the factor persisted in metrics;
+- separate confidence/reference artifacts, run identity, smoke/full jobs,
+  evaluation provenance, and optional plots.
+
+The paper does not publish a numerical `ridge_lambda` for `M_D` or authors'
+code. `ridge_lambda` is therefore an explicit recorded experiment parameter.
+There is no default for a scientific artifact: the launch requires a declared
+value, changing it creates a different artifact fingerprint, and the selected
+value must be reported. The smoke-only template explicitly uses `1.0` and does
+not freeze that value for a scientific run.

@@ -242,3 +242,52 @@ Reusing the v1 threshold assumes exchangeability between calibration
 differences and future current/SFT differences; it is not a gold-reward bound.
 V2 logs distribution-shift diagnostics, and neither preparation nor training
 accepts a gold checkpoint.
+
+## Additive AdvPO authorization and source audit
+
+On 2026-08-30 the user explicitly authorized an additive AdvPO comparison on
+top of this pipeline. This authorization does not alter the frozen v1 or
+CPDPOv2 branches. The AdvPO implementation is checked against Zhang et al.,
+*Mitigating Reward Overoptimization via Lightweight Uncertainty Estimation*,
+NeurIPS 2024 (arXiv:2403.05171v2). No authors' implementation was publicly
+available in the source search, so reproducibility is limited to the equations
+and experimental details disclosed in the paper.
+
+The paper defines a different confidence geometry from CPDPO:
+
+```text
+M_D = ridge_lambda I
+      + sum_(x,y_c,y_r in D_rm_train) [e(x,y_c)e(x,y_c)^T
+                                      + e(x,y_r)e(x,y_r)^T]
+g = mean_batch[e(x,y_current)] - mean_batch[e(x,y_ref)]
+B = b^2
+lambda_star = sqrt(g^T M_D^-1 g / B)
+phi_adv = phi_hat - M_D^-1 g / lambda_star
+```
+
+The online scalar reward is evaluated with the shared batch-level adversarial
+head `phi_adv`; this is not a sample-wise uncertainty penalty and does not use
+the CPDPO pair-difference geometry or conformal calibration. The matrix is
+accumulated as an unnormalised sum of individual response outer products in
+float64 and solved through a Cholesky factor without forming an inverse.
+
+For compatibility with the prompt-disjoint Coste experiment, reference
+responses are generated once by the frozen initial SFT policy. This is allowed
+by Section 4 of the paper, which permits SFT-policy responses as references,
+but differs from the exact Section 5.2 AdvPO run, which used each dataset
+prompt's annotated chosen response. Such chosen responses do not exist for the
+separate AlpacaFarm unlabeled PPO prompt role. The current pipeline also keeps
+its shared Pythia models, prompt schedule, 128-token generation limit,
+checkpoint cadence, and fair response/update budgets rather than silently
+claiming to reproduce the paper's LLaMA-7B, 512-token, 1,500-step setup.
+
+The paper tunes `B` over `[1, 5, 10, 15]`; every run therefore requires and
+records a named `B`. It defines `ridge_lambda` but does not disclose its
+numerical value, so the implementation exposes and fingerprints that value
+instead of presenting a guessed constant as author-exact. The paper's dynamic
+reward-scaling prose specifies restoring the post-subtraction reward to the
+original running-mean scale but gives no public code; the implementation uses
+the algebraically scale-restoring ratio
+`running_mean(original) / running_mean(adversarial)` and records it at every
+rollout. This convention is explicit provenance, not an undocumented claim
+about unreleased author code.

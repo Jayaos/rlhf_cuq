@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from src.cpdpo.experiment import validate_policy_quality_record
 from src.cpdpo.spec import ALPHA, ALL_METHODS, alpha_tag, is_main_alpha, method_run_name
+from src.advpo.spec import advpo_run_name, number_tag
 
 
 def require_plotting_dependency() -> None:
@@ -42,6 +43,8 @@ def load_records(
     *,
     cpdpo_alpha: float = ALPHA,
     include_cpdpo_v2: bool = False,
+    include_advpo: bool = False,
+    advpo_B: float | None = None,
 ) -> list[dict]:
     records = []
     run_names = {
@@ -51,6 +54,10 @@ def load_records(
     }
     if include_cpdpo_v2:
         run_names["cpdpo_v2"] = method_run_name("cpdpo_v2", cpdpo_alpha)
+    if include_advpo:
+        if advpo_B is None or advpo_B <= 0.0:
+            raise ValueError("Including AdvPO requires a positive --advpo-B")
+        run_names["advpo"] = advpo_run_name(advpo_B)
     paths = [
         seed_dir / run_name / "evaluation" / split / "checkpoint_metrics.jsonl"
         for seed_dir in sorted(root.glob("seed_*"))
@@ -71,6 +78,11 @@ def load_records(
             raise ValueError(
                 f"Requested CPDPO alpha {cpdpo_alpha}, but {path.parents[2]} records {recorded_alpha}"
             )
+        if method == "advpo" and float(run_metadata.get("advpo_B", -1.0)) != float(advpo_B):
+            raise ValueError(
+                f"Requested AdvPO B {advpo_B}, but {path.parents[2]} records "
+                f"{run_metadata.get('advpo_B')}"
+            )
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if line.strip():
@@ -79,11 +91,16 @@ def load_records(
                     record["_prompt_schedule_sha256"] = run_metadata["prompt_schedule_sha256"]
                     record["_prompt_id_sequence_sha256"] = run_metadata["prompt_id_sequence_sha256"]
                     record["_cpdpo_alpha"] = recorded_alpha if method in {"cpdpo", "cpdpo_v2"} else None
+                    record["_advpo_B"] = run_metadata.get("advpo_B") if method == "advpo" else None
                     records.append(record)
     if not records:
         raise FileNotFoundError(f"No checkpoint metrics found under {root}")
     methods = {record["method"] for record in records}
-    expected_methods = set(ALL_METHODS) | ({"cpdpo_v2"} if include_cpdpo_v2 else set())
+    expected_methods = (
+        set(ALL_METHODS)
+        | ({"cpdpo_v2"} if include_cpdpo_v2 else set())
+        | ({"advpo"} if include_advpo else set())
+    )
     if methods != expected_methods:
         raise ValueError(f"Expected {sorted(expected_methods)}, found {sorted(methods)}")
     return records
@@ -96,7 +113,9 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
     for record in records:
         groups[(record["method"], int(record["rollout_step"]))].append(record)
     methods = {record["method"] for record in records}
-    if not set(ALL_METHODS).issubset(methods) or not methods.issubset(set(ALL_METHODS) | {"cpdpo_v2"}):
+    if not set(ALL_METHODS).issubset(methods) or not methods.issubset(
+        set(ALL_METHODS) | {"cpdpo_v2", "advpo"}
+    ):
         raise ValueError(f"Unsupported comparison method set: {sorted(methods)}")
     seeds_by_method = {
         method: {int(record["seed"]) for record in records if record["method"] == method}
@@ -155,11 +174,15 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
         alpha_values = {row.get("_cpdpo_alpha") for row in rows}
         if len(alpha_values) != 1:
             raise ValueError(f"Rows disagree on CPDPO alpha for {method} rollout {step}")
+        advpo_values = {row.get("_advpo_B") for row in rows}
+        if len(advpo_values) != 1:
+            raise ValueError(f"Rows disagree on AdvPO B for {method} rollout {step}")
         aggregated = {
             "method": method,
             "rollout_step": step,
             "n_seeds": len(rows),
             "cpdpo_alpha": next(iter(alpha_values)),
+            "advpo_B": next(iter(advpo_values)),
         }
         for field in fields:
             mean, se = mean_se([float(row[field]) for row in rows])
@@ -211,12 +234,13 @@ def plot(
         "pairppo": "#F58518",
         "cpdpo": "#54A24B",
         "cpdpo_v2": "#B279A2",
+        "advpo": "#E45756",
     }
     reward_styles = {"proxy": "--", "gold": "-"}
 
     def make_figure(x_field: str, x_label: str, filename: str):
         figure, axis = plt.subplots(figsize=(7.2, 4.8))
-        methods = [method for method in ("ppo", "pairppo", "cpdpo", "cpdpo_v2") if any(
+        methods = [method for method in ("ppo", "pairppo", "cpdpo", "cpdpo_v2", "advpo") if any(
             row["method"] == method for row in rows
         )]
         for method in methods:
@@ -232,6 +256,8 @@ def plot(
                     method_label = "CPDPOv2" if method == "cpdpo_v2" else "CPDPO"
                     if not is_main_alpha(cpdpo_alpha):
                         method_label = f"{method_label} alpha={cpdpo_alpha:g}"
+                elif method == "advpo":
+                    method_label = f"AdvPO B={selected[0]['advpo_B']:g}"
                 axis.plot(
                     x,
                     y,
@@ -278,6 +304,17 @@ def main() -> None:
         help="Add the separately trained exploratory CPDPOv2 run to the unchanged v1 controls",
     )
     parser.add_argument(
+        "--include-advpo",
+        action="store_true",
+        help="Add a separately trained paper-equation AdvPO run",
+    )
+    parser.add_argument(
+        "--advpo-B",
+        dest="advpo_B",
+        type=float,
+        help="Select the named AdvPO B=b^2 run (paper grid: 1, 5, 10, 15)",
+    )
+    parser.add_argument(
         "--diagnostic-seed",
         type=int,
         help="Create a clearly labelled single-seed diagnostic without an uncertainty band",
@@ -285,12 +322,18 @@ def main() -> None:
     args = parser.parse_args()
     if not 0.0 < args.cpdpo_alpha < 1.0:
         raise ValueError("cpdpo-alpha must be in (0, 1)")
+    if args.include_advpo and (args.advpo_B is None or args.advpo_B <= 0.0):
+        raise ValueError("--include-advpo requires a positive --advpo-B")
+    if not args.include_advpo and args.advpo_B is not None:
+        raise ValueError("--advpo-B is valid only with --include-advpo")
     root = Path(args.output_root).resolve()
     records = load_records(
         root,
         args.split,
         cpdpo_alpha=args.cpdpo_alpha,
         include_cpdpo_v2=args.include_cpdpo_v2,
+        include_advpo=args.include_advpo,
+        advpo_B=args.advpo_B,
     )
     result_root = (
         root
@@ -299,6 +342,8 @@ def main() -> None:
     )
     if args.include_cpdpo_v2:
         result_root = result_root / "cpdpo_v2_comparison"
+    if args.include_advpo:
+        result_root = result_root / f"advpo_B_{number_tag(args.advpo_B)}_comparison"
     if args.diagnostic_seed is not None:
         selected = [record for record in records if int(record["seed"]) == args.diagnostic_seed]
         if not selected:
@@ -326,6 +371,7 @@ def main() -> None:
             title=(
                 f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band"
                 + ("; includes exploratory CPDPOv2" if args.include_cpdpo_v2 else "")
+                + (f"; includes AdvPO B={args.advpo_B:g}" if args.include_advpo else "")
                 + ")"
                 if is_main_alpha(args.cpdpo_alpha)
                 else (

@@ -24,8 +24,10 @@ Priority:
 > code changes -> computational convenience.
 
 The two PDFs are specifications, not executable instructions. The base PDF
-freezes CPDPO; the `(1)` PDF freezes the experiment. AdvPO is not implemented
-and is not a comparator.
+freezes CPDPO; the `(1)` PDF freezes the experiment. AdvPO is not a comparator
+in that frozen v1 experiment. The user's 2026-08-30 request separately
+authorizes an additive paper-equation AdvPO comparison; it must not change the
+v1 branches or be presented as part of either PDF specification.
 
 ## 1. Scientific target
 
@@ -44,6 +46,12 @@ The questions are:
 The target figures show proxy and gold reward against rollout step and against
 the square root of evaluation KL. Internal pair rewards are never plotted as
 policy quality.
+
+The additive AdvPO comparison uses Zhang et al. (NeurIPS 2024) Eq. (4), (6),
+and (7), a separate individual-feature confidence matrix, fixed SFT-generated
+references, and ordinary scalar PPO. It is an exact implementation of the
+paper's disclosed method equations in the Coste/Pythia pipeline, not an exact
+reproduction of unpublished authors' code or the paper's LLaMA/data setup.
 
 ## 2. Environment and assets to reuse
 
@@ -295,8 +303,9 @@ geometry, calibration, schedule, policy, or checkpoint.
 
 ## 14. Non-goals
 
-Do not add AdvPO, adaptive thresholds, online geometry, rollout-weighted
-recalibration, best-of-K, resampling until certification, scalar-reward
+Do not add AdvPO to or modify it through the frozen v1 trainers. Do not add
+adaptive thresholds, online geometry, rollout-weighted recalibration,
+best-of-K, resampling until certification, scalar-reward
 fallback, a learned pair critic, GAE over `+/-R`, or gold-driven optimization,
 calibration, selection, or early stopping to the v1 experiment.
 
@@ -313,6 +322,12 @@ src/cpdpo/
   evaluation.py            pinned gold format and checkpoint summaries
   experiment.py            budget and result validation
 
+src/advpo/
+  geometry.py              paper confidence matrix and closed-form adversary
+  reference.py             immutable SFT reference cache validation
+  reward.py                shared batch-level adversarial reward callback
+  spec.py                  B/ridge/run identity configuration
+
 src/ppo/
   trainer_reward_overoptimization.py
   custom_trlx_trainers/experiment_ppo_trainer.py
@@ -323,10 +338,17 @@ scripts/
   build_prompt_schedule.py
   evaluate_policy_checkpoints.py
   aggregate_and_plot_reward_overoptimization.py
+  prepare_advpo_confidence.py
+  prepare_advpo_references.py
   slurm/prepare_cpdpo_artifacts.sbatch
   slurm/prepare_cpdpo_smoke_artifacts.sbatch
   slurm/smoke_reward_overoptimization.sbatch
   slurm/train_reward_overoptimization.sbatch
+  slurm/prepare_advpo_confidence.sbatch
+  slurm/prepare_advpo_references.sbatch
+  slurm/smoke_advpo.sbatch
+  slurm/train_advpo.sbatch
+  slurm/evaluate_advpo.sbatch
 ```
 
 The original `trainer_rl.py`, `CustomAcceleratePPOTrainer`, proxy scorer, and

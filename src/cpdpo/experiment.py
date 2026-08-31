@@ -35,7 +35,7 @@ def resolve_training_budget(
     if prompts_per_rollout < 1 or pair_batch_size < 1 or ppo_epochs < 1:
         raise ValueError("Budget values must be positive")
     responses = 2 * prompts_per_rollout
-    if method in {"ppo", "cpdpo_v2"}:
+    if method in {"ppo", "cpdpo_v2", "advpo"}:
         rollout_units = responses
         batch_units = 2 * pair_batch_size
     else:

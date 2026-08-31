@@ -15,7 +15,8 @@ RESPONSES_PER_PROMPT = 2
 PAIR_METHODS = frozenset({"pairppo", "cpdpo"})
 ALL_METHODS = frozenset({"ppo", *PAIR_METHODS})
 EXPLORATORY_METHODS = frozenset({"cpdpo_v2"})
-TRAINING_METHODS = frozenset({*ALL_METHODS, *EXPLORATORY_METHODS})
+ADDITIVE_COMPARISON_METHODS = frozenset({"advpo"})
+TRAINING_METHODS = frozenset({*ALL_METHODS, *EXPLORATORY_METHODS, *ADDITIVE_COMPARISON_METHODS})
 
 
 def is_main_alpha(alpha: float) -> bool:
@@ -38,6 +39,8 @@ def method_run_name(method: str, alpha: float = ALPHA) -> str:
 
     if method not in TRAINING_METHODS:
         raise ValueError(f"Unknown experiment method: {method}")
+    if method == "advpo":
+        raise ValueError("AdvPO run names require advpo_run_name(B)")
     if method not in {"cpdpo", "cpdpo_v2"}:
         return method
     return method if is_main_alpha(alpha) else f"{method}_alpha_{alpha_tag(alpha)}"

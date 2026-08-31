@@ -253,7 +253,9 @@ def main() -> None:  # noqa: C901
         }
         if "reference_anchor" in metadata:
             expected["reference_anchor"] = metadata["reference_anchor"]
-        for key in ("run_variant", "experiment_track", "cpdpo_alpha"):
+        if "advpo" in metadata:
+            expected["advpo"] = metadata["advpo"]
+        for key in ("run_variant", "experiment_track", "cpdpo_alpha", "advpo_B"):
             if key in metadata:
                 expected[key] = metadata[key]
         if any(context.get(key) != value for key, value in expected.items()):
@@ -379,7 +381,12 @@ def main() -> None:  # noqa: C901
                 if rollout_step == 0
                 else rollout_records[rollout_step]
             )
-            method_artifacts = metadata.get("pair_artifacts") or metadata.get("reference_anchor") or {}
+            method_artifacts = (
+                metadata.get("pair_artifacts")
+                or metadata.get("reference_anchor")
+                or metadata.get("advpo")
+                or {}
+            )
             record = {
                 "schema_version": "1.0.0",
                 "experiment": "reward_overoptimization",
@@ -387,6 +394,7 @@ def main() -> None:  # noqa: C901
                 "run_variant": run_variant,
                 "experiment_track": metadata.get("experiment_track", "main"),
                 "cpdpo_alpha": cpdpo_alpha,
+                "advpo_B": metadata.get("advpo_B"),
                 "seed": metadata["base_seed"],
                 "rollout_step": rollout_step,
                 "optimizer_step": optimizer_step,
@@ -405,6 +413,12 @@ def main() -> None:  # noqa: C901
                 "geometry_fingerprint": method_artifacts.get("geometry_fingerprint"),
                 "calibration_fingerprint": method_artifacts.get("calibration_fingerprint"),
                 "q_alpha": method_artifacts.get("q_alpha"),
+                "advpo_confidence_fingerprint": method_artifacts.get("confidence_fingerprint"),
+                "advpo_reference_cache_fingerprint": (
+                    method_artifacts.get("reference_cache_fingerprint")
+                    if metadata["method"] == "advpo"
+                    else None
+                ),
                 "certification_rate": (
                     training_counts.get("pair/certification_rate")
                     if metadata["method"] == "cpdpo" and rollout_step > 0

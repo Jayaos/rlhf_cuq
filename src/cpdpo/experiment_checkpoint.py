@@ -85,6 +85,13 @@ class ExperimentCheckpointMixin:
         self.evaluation_seed_stream.counter = int(state["evaluation_seed_stream_counter"])
         self.mb_count = resume_iter * self.num_mb
         self.low_certification_rollouts = int(state.get("low_certification_rollouts", 0))
+        reward_state = state.get("reward_callback_state")
+        if reward_state is not None:
+            if not hasattr(self.reward_fn, "load_state_dict"):
+                raise ValueError("Checkpoint contains reward state but this callback cannot restore it")
+            self.reward_fn.load_state_dict(reward_state)
+        elif hasattr(self.reward_fn, "load_state_dict"):
+            raise ValueError("Stateful reward callback is missing from the resume checkpoint")
 
         eval_dir = Path(self.config.train.output_dir) / "eval"
         prior_evaluations = []
@@ -131,6 +138,9 @@ class ExperimentCheckpointMixin:
         if self.iter_count % updates_per_rollout:
             raise RuntimeError("Experiment checkpoints may only be saved on rollout boundaries")
         if self.accelerator.is_main_process:
+            reward_state = (
+                self.reward_fn.state_dict() if hasattr(self.reward_fn, "state_dict") else None
+            )
             atomic_write_json(
                 target / "experiment_state.json",
                 {
@@ -140,6 +150,7 @@ class ExperimentCheckpointMixin:
                     "rollout_seed_stream_counter": self.rollout_seed_stream.counter,
                     "evaluation_seed_stream_counter": self.evaluation_seed_stream.counter,
                     "low_certification_rollouts": int(getattr(self, "low_certification_rollouts", 0)),
+                    "reward_callback_state": reward_state,
                     "experiment_context_hash": self.experiment_context_hash,
                     "experiment_context": self.experiment_context,
                 },

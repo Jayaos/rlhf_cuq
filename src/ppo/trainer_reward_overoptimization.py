@@ -1,4 +1,4 @@
-"""Train one fair-budget PPO, PairPPO, or CPDPO branch without gold access."""
+"""Train one fair-budget PPO, PairPPO, CPDPO, CPDPOv2, or AdvPO branch."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ from model_training.custom_datasets.formatting import format_pairs
 from model_training.utils.utils import init_rng, read_yamls
 from trlx.data.configs import TRLConfig
 
+from src.advpo.reward import AdvPORewardCallback
+from src.advpo.spec import AdvPOConfig, advpo_run_name
 from src.cpdpo.artifacts import atomic_write_json, git_revision, model_fingerprint, sha256_file
 from src.cpdpo.pair_reward import PairRewardCallback
 from src.cpdpo.prompt_schedule import ExperimentSeeds, load_schedule_as_duplicated_prompts
@@ -58,6 +60,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--geometry")
     parser.add_argument("--calibration")
     parser.add_argument("--reference-cache")
+    parser.add_argument("--advpo-confidence")
+    parser.add_argument(
+        "--advpo-B",
+        dest="advpo_B",
+        type=float,
+        help="AdvPO confidence radius squared B=b^2 (paper grid: 1, 5, 10, 15)",
+    )
     parser.add_argument("--output-root", default="outputs/reward_overoptimization")
     parser.add_argument("--ppo-config", default="configs/ppo_config_reward_overoptimization.yaml")
     parser.add_argument("--pair-batch-size", type=int, default=32)
@@ -75,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-smoke-artifacts",
         action="store_true",
-        help="Permit explicitly tagged reduced-data artifacts; valid only for a CPDPO smoke run",
+        help="Permit explicitly tagged reduced-data artifacts in a smoke-only robust/additive run",
     )
     parser.add_argument(
         "--resume-from-checkpoint",
@@ -131,16 +140,23 @@ def main() -> None:  # noqa: C901
         raise ValueError("rollout-steps and prompts-per-rollout must be positive")
     if args.checkpoint_every_rollouts < 1:
         raise ValueError("checkpoint interval must be positive")
-    robust_methods = {"cpdpo", "cpdpo_v2"}
-    if args.method in robust_methods and (not args.geometry or not args.calibration):
+    cpdpo_methods = {"cpdpo", "cpdpo_v2"}
+    if args.method in cpdpo_methods and (not args.geometry or not args.calibration):
         raise ValueError(f"{args.method} requires --geometry and --calibration")
-    if args.method not in robust_methods and (args.geometry or args.calibration):
+    if args.method not in cpdpo_methods and (args.geometry or args.calibration):
         raise ValueError("Only CPDPO methods may load geometry/calibration artifacts")
-    if args.method == "cpdpo_v2" and not args.reference_cache:
-        raise ValueError("CPDPOv2 requires --reference-cache")
-    if args.method != "cpdpo_v2" and args.reference_cache:
-        raise ValueError("--reference-cache is valid only for CPDPOv2")
-    if args.method not in robust_methods and (
+    if args.method in {"cpdpo_v2", "advpo"} and not args.reference_cache:
+        raise ValueError(f"{args.method} requires --reference-cache")
+    if args.method not in {"cpdpo_v2", "advpo"} and args.reference_cache:
+        raise ValueError("--reference-cache is valid only for CPDPOv2 or AdvPO")
+    if args.method == "advpo":
+        if not args.advpo_confidence or args.advpo_B is None:
+            raise ValueError("AdvPO requires --advpo-confidence and --advpo-B")
+        if args.advpo_B <= 0.0:
+            raise ValueError("--advpo-B must be positive")
+    elif args.advpo_confidence or args.advpo_B is not None:
+        raise ValueError("AdvPO confidence/B arguments are valid only for AdvPO")
+    if args.method not in cpdpo_methods and (
         args.reward_variant != "robust_margin" or args.geometry_mode != "full"
     ):
         raise ValueError("CPDPO ablation flags cannot be applied to PPO or PairPPO")
@@ -148,18 +164,26 @@ def main() -> None:  # noqa: C901
         args.reward_variant != "robust_margin" or args.geometry_mode != "full"
     ):
         raise ValueError("The first CPDPOv2 diagnostic freezes robust-margin/full-geometry settings")
-    if args.allow_smoke_artifacts and args.method not in robust_methods:
-        raise ValueError("--allow-smoke-artifacts is valid only for CPDPO methods")
+    if args.allow_smoke_artifacts and args.method not in cpdpo_methods | {"advpo"}:
+        raise ValueError("--allow-smoke-artifacts is valid only for robust/additive methods")
     if not 0.0 < args.alpha < 1.0:
         raise ValueError("alpha must be in (0, 1)")
-    if args.method not in robust_methods and not is_main_alpha(args.alpha):
+    if args.method not in cpdpo_methods and not is_main_alpha(args.alpha):
         raise ValueError("--alpha applies only to CPDPO methods; controls are unchanged")
 
-    run_variant = method_run_name(args.method, args.alpha)
+    run_variant = (
+        advpo_run_name(args.advpo_B)
+        if args.method == "advpo"
+        else method_run_name(args.method, args.alpha)
+    )
     experiment_track = (
         ("cpdpo_alpha_ablation" if args.method == "cpdpo" else "cpdpo_v2_alpha_ablation")
-        if args.method in robust_methods and not is_main_alpha(args.alpha)
-        else ("cpdpo_v2_exploratory" if args.method == "cpdpo_v2" else "main")
+        if args.method in cpdpo_methods and not is_main_alpha(args.alpha)
+        else (
+            "cpdpo_v2_exploratory"
+            if args.method == "cpdpo_v2"
+            else ("advpo_additive" if args.method == "advpo" else "main")
+        )
     )
 
     schedule_path = Path(args.prompt_schedule).resolve()
@@ -204,6 +228,30 @@ def main() -> None:  # noqa: C901
         reward_fn = get_reward_fn(rank_config, training_conf)
         pair_config = None
         v2_config = None
+        advpo_config = None
+    elif args.method == "advpo":
+        trlx_config.train.trainer = "ExperimentAcceleratePPOTrainer"
+        trlx_config.method.num_rollouts = 2 * args.prompts_per_rollout
+        trlx_config.train.batch_size = 2 * args.pair_batch_size
+        pair_config = None
+        v2_config = None
+        advpo_config = AdvPOConfig(
+            confidence_radius_squared=args.advpo_B,
+            kl_beta=args.kl_beta,
+            adversarial_batch_responses=args.pair_chunk_size,
+        )
+        reward_fn = AdvPORewardCallback(
+            proxy_rm_path=rank_config.model_names[0],
+            reference_policy_path=sft_config.model_name,
+            reference_cache_path=args.reference_cache,
+            confidence_path=args.advpo_confidence,
+            config=advpo_config,
+            device=torch.device("cuda", torch.cuda.device_count() - 1),
+            batch_size=args.proxy_batch_size,
+            data_manifest_path=str(data_manifest),
+            prompt_schedule_path=str(schedule_path),
+            allow_smoke_artifacts=args.allow_smoke_artifacts,
+        )
     elif args.method == "cpdpo_v2":
         trlx_config.train.trainer = "ExperimentAcceleratePPOTrainer"
         trlx_config.method.num_rollouts = 2 * args.prompts_per_rollout
@@ -223,6 +271,7 @@ def main() -> None:  # noqa: C901
             prompt_schedule_path=str(schedule_path),
             allow_smoke_artifacts=args.allow_smoke_artifacts,
         )
+        advpo_config = None
     else:
         trlx_config.train.trainer = "CustomAcceleratePairPPOTrainer"
         trlx_config.method.num_rollouts = args.prompts_per_rollout
@@ -245,6 +294,7 @@ def main() -> None:  # noqa: C901
             allow_smoke_artifacts=args.allow_smoke_artifacts,
         )
         v2_config = None
+        advpo_config = None
     trlx_config.method.chunk_size = args.pair_chunk_size
     if trlx_config.method.chunk_size % 2:
         raise ValueError("pair-chunk-size must be even")
@@ -313,13 +363,15 @@ def main() -> None:  # noqa: C901
     reference_anchor = (
         reward_fn.provenance() if isinstance(reward_fn, ReferenceAnchoredRewardCallback) else None
     )
+    advpo_artifacts = reward_fn.provenance() if isinstance(reward_fn, AdvPORewardCallback) else None
     code_revision = git_revision(ROOT)
     experiment_context = {
         "schema_version": "1.0.0",
         "method": args.method,
         "run_variant": run_variant,
         "experiment_track": experiment_track,
-        "cpdpo_alpha": args.alpha if args.method in robust_methods else None,
+        "cpdpo_alpha": args.alpha if args.method in cpdpo_methods else None,
+        "advpo_B": args.advpo_B if args.method == "advpo" else None,
         "base_seed": args.base_seed,
         "rollout_steps": args.rollout_steps,
         "responses_per_rollout": 2 * args.prompts_per_rollout,
@@ -336,6 +388,8 @@ def main() -> None:  # noqa: C901
     }
     if reference_anchor is not None:
         experiment_context["reference_anchor"] = reference_anchor
+    if advpo_artifacts is not None:
+        experiment_context["advpo"] = advpo_artifacts
     trlx_config.train.trainer_kwargs = {
         "experiment_seeds": asdict(seeds),
         "experiment_context": experiment_context,
@@ -353,7 +407,8 @@ def main() -> None:  # noqa: C901
         "method": args.method,
         "run_variant": run_variant,
         "experiment_track": experiment_track,
-        "cpdpo_alpha": args.alpha if args.method in robust_methods else None,
+        "cpdpo_alpha": args.alpha if args.method in cpdpo_methods else None,
+        "advpo_B": args.advpo_B if args.method == "advpo" else None,
         "base_seed": args.base_seed,
         "resolved_seeds": asdict(seeds),
         "rollout_steps": args.rollout_steps,
@@ -385,6 +440,9 @@ def main() -> None:  # noqa: C901
     if v2_config is not None:
         run_metadata["cpdpo_v2"] = v2_config.to_dict()
         run_metadata["reference_anchor"] = reference_anchor
+    if advpo_config is not None:
+        run_metadata["advpo_config"] = advpo_config.to_dict()
+        run_metadata["advpo"] = advpo_artifacts
     if resume_checkpoint is None:
         atomic_write_json(output_dir / "run_metadata.json", run_metadata)
     else:

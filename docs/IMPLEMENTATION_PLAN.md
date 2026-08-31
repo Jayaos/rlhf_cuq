@@ -136,3 +136,31 @@ training.
 - Canonicalize cached prompts through the same policy-tokenizer decode boundary
   used by TRLX reward callbacks; reject pre-1.1 caches built from raw schedule
   text before training begins.
+
+## 10. Add paper-equation AdvPO as a separate comparison — implemented locally; cluster smoke pending
+
+- Preserve PPO, PairPPO, CPDPO, CPDPOv2, their artifacts, and their launch
+  defaults unchanged.
+- Build the AdvPO `M_D` from the unnormalised sum of individual chosen and
+  rejected `D_rm_train` feature outer products, with a separately declared
+  ridge and float64 Cholesky factorization.
+- Cache one frozen-SFT reference response per scheduled prompt without loading
+  CPDPO geometry/calibration or gold reward.
+- Compute one shared adversarial reward-head direction per 64-response PPO
+  batch from the current/reference mean feature difference and the selected
+  `B=b^2`.
+- Reuse ordinary scalar PPO/GAE, the existing initial/reference policy, common
+  prompt schedule, response/update budget, checkpointing, and gold-isolated
+  evaluator.
+- Add isolated AdvPO preparation, smoke, full-training, evaluation, and
+  optional plotting commands. Require named run directories for every `B`.
+- Test the confidence-matrix construction, closed-form max-min identity,
+  shared-direction behavior, zero-difference boundary, artifact provenance,
+  equal budget, and absence of gold access.
+
+This is an exact implementation of the disclosed AdvPO equations in the
+current Coste/Pythia experimental pipeline, not an exact reproduction of the
+authors' unpublished code or their Section 5.2 LLaMA/data configuration.
+The dependency-free suite and Python compilation pass locally. The pinned
+PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
+`scripts/slurm/smoke_advpo.sbatch` in the cluster environment.
