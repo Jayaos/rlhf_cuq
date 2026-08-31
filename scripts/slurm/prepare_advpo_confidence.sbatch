@@ -23,6 +23,11 @@ CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 RIDGE_LAMBDA="$ADVPO_RIDGE_LAMBDA"
+ARTIFACT_BATCH_SIZE="${ADVPO_ARTIFACT_BATCH_SIZE:-64}"
+if [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: ADVPO_ARTIFACT_BATCH_SIZE must be a positive integer" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -45,6 +50,7 @@ srun python scripts/prepare_advpo_confidence.py \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$CONFIDENCE_DIR" \
   --ridge-lambda "$RIDGE_LAMBDA" \
+  --batch-size "$ARTIFACT_BATCH_SIZE" \
   --device cuda:0
 
 echo "PASS AdvPO confidence ridge_lambda=$RIDGE_LAMBDA path=$CONFIDENCE_DIR"

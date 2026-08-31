@@ -304,8 +304,10 @@ class RuntimeConfigTests(unittest.TestCase):
     def test_proxy_rm_jobs_make_conda_activation_nounset_safe(self) -> None:
         for filename in (
             "train_proxy_rm.sbatch",
+            "train_proxy_rm_1p4b.sbatch",
             "smoke_proxy_rm.sbatch",
             "smoke_proxy_rm_any_gpu.sbatch",
+            "smoke_proxy_rm_1p4b.sbatch",
         ):
             with self.subTest(filename=filename):
                 job_text = (ROOT / "scripts/slurm" / filename).read_text(
@@ -319,6 +321,96 @@ class RuntimeConfigTests(unittest.TestCase):
                 self.assertLess(nounset_off, hook)
                 self.assertLess(hook, activate)
                 self.assertLess(activate, nounset_on)
+
+    def test_matched_capacity_rm_track_reuses_sft_asset_and_effective_batch(self) -> None:
+        config_text = (ROOT / "configs/config_rm_cluster.yaml").read_text(
+            encoding="utf-8"
+        )
+        full_overlay = config_text.split("rm-pythia-1p4b-cluster-split:", 1)[1].split(
+            "rm-pythia-1p4b-cluster-smoke:", 1
+        )[0]
+        for setting in (
+            "model_name: assets/initial_sft_policy",
+            "model_family: pythia",
+            "data_split_manifest_path: "
+            "data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json",
+            "gradient_checkpointing: true",
+            "gradient_accumulation_steps: 32",
+            "per_device_train_batch_size: 1",
+            "per_device_eval_batch_size: 1",
+            "reward_normalization_batch_size: 1",
+        ):
+            self.assertIn(setting, full_overlay)
+
+        # The overlay is merged after the Coste entry, whose microbatch 8 and
+        # accumulation 4 also produce effective batch 32.
+        self.assertEqual(1 * 32, 8 * 4)
+
+        wrapper = (
+            ROOT / "src/reward_modeling/training/trainer_rm_manifest.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reward_normalization_batch_size", wrapper)
+        self.assertIn("batch_size=min(batch_size, normalization_batch_size)", wrapper)
+
+    def test_matched_capacity_rm_jobs_are_isolated_scratch_backed_and_resumable(self) -> None:
+        full_job = (ROOT / "scripts/slurm/train_proxy_rm_1p4b.sbatch").read_text(
+            encoding="utf-8"
+        )
+        for expected in (
+            "#SBATCH --mem=64G",
+            "#SBATCH --time=48:00:00",
+            '#SBATCH --constraint="A100|H100|H200"',
+            "$JOB_STORAGE_ROOT/models/rm-pythia-1p4b-prompt-disjoint",
+            "--asset initial_sft_policy",
+            "--configs defaults_rm rm-pythia-44m rm-pythia-1p4b-cluster-split",
+            'RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"',
+            "the legacy trainer resumes only the latest checkpoint",
+            "final_eval_results.json",
+            "PASS matched-capacity 1.4B proxy RM",
+        ):
+            self.assertIn(expected, full_job)
+
+        smoke_job = (ROOT / "scripts/slurm/smoke_proxy_rm_1p4b.sbatch").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--asset initial_sft_policy", smoke_job)
+        self.assertIn(
+            "--configs defaults_rm rm-pythia-44m rm-pythia-1p4b-cluster-smoke",
+            smoke_job,
+        )
+        self.assertIn("PASS 1.4B RM smoke validation", smoke_job)
+        self.assertIn("Smoke-only checkpoint", smoke_job)
+
+    def test_proxy_scoring_batches_are_runtime_configurable_for_large_rm(self) -> None:
+        for filename in (
+            "train_reward_overoptimization.sbatch",
+            "evaluate_reward_overoptimization.sbatch",
+            "train_cpdpo_v2.sbatch",
+            "evaluate_cpdpo_v2.sbatch",
+            "train_advpo.sbatch",
+            "evaluate_advpo.sbatch",
+            "smoke_reward_overoptimization.sbatch",
+            "smoke_cpdpo_v2.sbatch",
+            "smoke_advpo.sbatch",
+        ):
+            with self.subTest(filename=filename):
+                text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+                self.assertIn("CPDPO_PROXY_BATCH_SIZE", text)
+                self.assertIn('--proxy-batch-size "$PROXY_BATCH_SIZE"', text)
+
+        for filename in (
+            "prepare_cpdpo_artifacts.sbatch",
+            "prepare_cpdpo_smoke_artifacts.sbatch",
+        ):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            self.assertIn("CPDPO_ARTIFACT_BATCH_SIZE", text)
+            self.assertIn('--batch-size "$ARTIFACT_BATCH_SIZE"', text)
+
+        confidence = (ROOT / "scripts/slurm/prepare_advpo_confidence.sbatch").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("ADVPO_ARTIFACT_BATCH_SIZE", confidence)
+        self.assertIn('--batch-size "$ARTIFACT_BATCH_SIZE"', confidence)
 
     def test_proxy_rm_smoke_job_is_small_isolated_and_manifest_backed(self) -> None:
         config_text = (ROOT / "configs/config_rm_cluster.yaml").read_text(

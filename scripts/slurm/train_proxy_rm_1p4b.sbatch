@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# Train the additive matched-capacity 1.4B proxy RM on D_rm_train/D_rm_val.
+# The 1.4B SFT checkpoint is converted to a separate scalar reward-model
+# branch; it is not used as an untrained reward scorer.
+#
+# Submit from the repository root:
+#   sbatch scripts/slurm/train_proxy_rm_1p4b.sbatch
+#
+# Resume only from the latest complete immediate checkpoint child:
+#   sbatch --export=ALL,RM_RESUME_CHECKPOINT=/scratch/.../checkpoint-N \
+#     scripts/slurm/train_proxy_rm_1p4b.sbatch
+
+#SBATCH -J proxy_rm_pythia_1p4b
+#SBATCH --account=gts-yxie77-paid
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=48:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --constraint="A100|H100|H200"
+#SBATCH -qinferno
+#SBATCH -o Report-proxy-rm-1p4b-%j.out
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=jlee3541@gatech.edu
+
+module load anaconda3
+set -euo pipefail
+
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then
+  echo "ERROR: submit this file with sbatch; do not run it on a login node." >&2
+  exit 2
+fi
+
+PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
+RM_SEED="${SLURM_ARRAY_TASK_ID:-${RM_SEED:-1}}"
+CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
+JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
+OUTPUT_BASE="${RM_OUTPUT_BASE:-$JOB_STORAGE_ROOT/models/rm-pythia-1p4b-prompt-disjoint}"
+OUTPUT_DIR="${OUTPUT_BASE}_seed${RM_SEED}"
+RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"
+CHECKSUM_DIR="${RM_CHECKSUM_DIR:-$JOB_STORAGE_ROOT/checksums}"
+CHECKSUM_FILE="$CHECKSUM_DIR/rm-pythia-1p4b-prompt-disjoint_seed${RM_SEED}.sha256"
+
+if [[ ! "$RM_SEED" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: RM_SEED/SLURM_ARRAY_TASK_ID must be a positive integer: $RM_SEED" >&2
+  exit 2
+fi
+if [[ -z "$OUTPUT_BASE" || "$OUTPUT_BASE" == "/" ]]; then
+  echo "ERROR: RM_OUTPUT_BASE must name a model-output base path." >&2
+  exit 2
+fi
+
+cd "$PROJECT_ROOT"
+if [[ ! -f pyproject.toml || ! -f scripts/configure_cluster_storage.sh ]]; then
+  echo "ERROR: RLHF_PROJECT_ROOT/SLURM_SUBMIT_DIR is not the repository root: $PROJECT_ROOT" >&2
+  exit 2
+fi
+if ! command -v conda >/dev/null 2>&1; then
+  echo "ERROR: conda is not on PATH." >&2
+  exit 2
+fi
+
+set +u
+eval "$(conda shell.bash hook)"
+conda activate "$CONDA_ENV_NAME"
+set -u
+
+source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
+export CUDA_HOME="$CONDA_PREFIX"
+export MAX_JOBS="${SLURM_CPUS_PER_TASK:-8}"
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+export TOKENIZERS_PARALLELISM=false
+export HF_HUB_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export WANDB_DIR="$JOB_STORAGE_ROOT/wandb"
+mkdir -p "$WANDB_DIR" "$(dirname -- "$OUTPUT_BASE")" "$CHECKSUM_DIR"
+
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: ${SLURMD_NODENAME:-unknown}"
+echo "Repository: $PROJECT_ROOT"
+echo "Git revision: $(git rev-parse HEAD)"
+echo "Conda environment: $CONDA_PREFIX"
+echo "Scratch/cache root: $JOB_STORAGE_ROOT"
+echo "RM capacity track: 1.4B"
+echo "RM seed: $RM_SEED"
+echo "SFT initialization: assets/initial_sft_policy"
+echo "Output: $OUTPUT_DIR"
+echo "Checksums: $CHECKSUM_FILE"
+
+nvidia-smi
+python -c "import torch; assert torch.cuda.is_available(), 'CUDA is not available'; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'gpu', torch.cuda.get_device_name(0), 'bf16', torch.cuda.is_bf16_supported()); assert torch.cuda.is_bf16_supported(), 'The 1.4B RM configuration requires BF16 support'"
+python scripts/download_assets.py \
+  --asset-root assets \
+  --asset initial_sft_policy \
+  --verify-only
+python scripts/build_data_manifest.py \
+  --config configs/data_split_prompt_disjoint_v1.yaml \
+  --verify-only
+
+RESUME_ARGS=()
+if [[ -n "$RESUME_CHECKPOINT" ]]; then
+  if [[ ! -d "$OUTPUT_DIR" ]]; then
+    echo "ERROR: resume requested, but output directory is missing: $OUTPUT_DIR" >&2
+    exit 2
+  fi
+  if [[ ! -d "$RESUME_CHECKPOINT" ]]; then
+    echo "ERROR: requested resume checkpoint is missing: $RESUME_CHECKPOINT" >&2
+    exit 2
+  fi
+
+  OUTPUT_DIR_PATH="$(realpath -e -- "$OUTPUT_DIR")"
+  RESUME_CHECKPOINT_PATH="$(realpath -e -- "$RESUME_CHECKPOINT")"
+  RESUME_CHECKPOINT_NAME="$(basename -- "$RESUME_CHECKPOINT_PATH")"
+  if [[ "$(dirname -- "$RESUME_CHECKPOINT_PATH")" != "$OUTPUT_DIR_PATH" ]]; then
+    echo "ERROR: resume checkpoint must be an immediate child of $OUTPUT_DIR_PATH" >&2
+    exit 2
+  fi
+  if [[ ! "$RESUME_CHECKPOINT_NAME" =~ ^checkpoint-([1-9][0-9]*)$ ]]; then
+    echo "ERROR: invalid resume checkpoint name: $RESUME_CHECKPOINT_NAME" >&2
+    exit 2
+  fi
+  RESUME_STEP="${BASH_REMATCH[1]}"
+  LATEST_CHECKPOINT="$(find "$OUTPUT_DIR_PATH" -mindepth 1 -maxdepth 1 -type d -name 'checkpoint-[0-9]*' -print | sort -V | tail -n 1)"
+  if [[ -z "$LATEST_CHECKPOINT" ]]; then
+    echo "ERROR: no checkpoints were found under $OUTPUT_DIR_PATH" >&2
+    exit 2
+  fi
+  LATEST_CHECKPOINT="$(realpath -e -- "$LATEST_CHECKPOINT")"
+  if [[ "$RESUME_CHECKPOINT_PATH" != "$LATEST_CHECKPOINT" ]]; then
+    echo "ERROR: the legacy trainer resumes only the latest checkpoint." >&2
+    echo "Requested: $RESUME_CHECKPOINT_PATH" >&2
+    echo "Latest:    $LATEST_CHECKPOINT" >&2
+    exit 2
+  fi
+
+  python - "$RESUME_CHECKPOINT_PATH" "$RESUME_STEP" <<'PY'
+import gc
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+root = Path(sys.argv[1])
+expected_step = int(sys.argv[2])
+for name in ("trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"):
+    path = root / name
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError(f"resume checkpoint is incomplete: {path}")
+state = json.loads((root / "trainer_state.json").read_text(encoding="utf-8"))
+if int(state.get("global_step", -1)) != expected_step:
+    raise RuntimeError(
+        f"checkpoint name/state mismatch: name={expected_step}, "
+        f"trainer_state={state.get('global_step')}"
+    )
+weights = sorted(root.glob("pytorch_model*.bin")) + sorted(root.glob("*.safetensors"))
+if not weights or any(path.stat().st_size == 0 for path in weights):
+    raise RuntimeError(f"resume checkpoint has missing or empty model weights: {root}")
+for name in ("optimizer.pt", "scheduler.pt", "rng_state.pth"):
+    value = torch.load(root / name, map_location="cpu")
+    del value
+    gc.collect()
+print("PASS resumable 1.4B RM checkpoint", f"path={root}", f"global_step={expected_step}")
+PY
+
+  RESUME_ARGS+=(--resume_from_checkpoint)
+  echo "Resume checkpoint: $RESUME_CHECKPOINT_PATH"
+else
+  if [[ -d "$OUTPUT_DIR" ]] && [[ -n "$(find "$OUTPUT_DIR" -mindepth 1 -print -quit)" ]]; then
+    echo "ERROR: output directory is not empty: $OUTPUT_DIR" >&2
+    echo "Move it aside or set RM_RESUME_CHECKPOINT to its latest complete checkpoint." >&2
+    exit 2
+  fi
+fi
+
+srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
+  src/reward_modeling/training/trainer_rm_manifest.py \
+  --configs defaults_rm rm-pythia-44m rm-pythia-1p4b-cluster-split \
+  --rng_seed "$RM_SEED" \
+  --output_dir "$OUTPUT_BASE" \
+  "${RESUME_ARGS[@]}"
+
+if [[ ! -d "$OUTPUT_DIR" ]]; then
+  echo "ERROR: training returned success but output is missing: $OUTPUT_DIR" >&2
+  exit 1
+fi
+test -f "$OUTPUT_DIR/final_eval_results.json"
+find "$OUTPUT_DIR" -type f -print0 | sort -z | xargs -0 sha256sum > "$CHECKSUM_FILE"
+
+echo "PASS matched-capacity 1.4B proxy RM seed $RM_SEED"
+echo "Checkpoint: $OUTPUT_DIR"
+echo "Checksums: $CHECKSUM_FILE"

@@ -291,3 +291,31 @@ the algebraically scale-restoring ratio
 `running_mean(original) / running_mean(adversarial)` and records it at every
 rollout. This convention is explicit provenance, not an undocumented claim
 about unreleased author code.
+
+## Additive matched-capacity proxy-RM authorization
+
+On 2026-08-31 the user authorized a separate proxy-RM capacity experiment that
+branches the pinned `tlc4418/pythia_1.4b_sft_policy` checkpoint into a reward
+model and preference-trains it on the unchanged manifest roles
+`D_rm_train`/`D_rm_val`. The untouched SFT causal language model is not a
+reward model: the audited Open-Assistant `GPTNeoXRewardModel` conversion adds
+the scalar `out_proj` reward head, after which the complete branch is trained
+with the same Coste reward-model objective and five-epoch schedule used by the
+44M proxy.
+
+This is a named `proxy_rm_1p4b` capacity ablation, not a replacement for the
+frozen 44M-proxy result. To fit a single Phoenix accelerator without changing
+the effective training batch, the 1.4B configuration uses microbatch 1 with 32
+gradient-accumulation steps instead of microbatch 8 with four accumulation
+steps, enables gradient checkpointing, and lowers only evaluation and
+post-training reward-normalization batch sizes. Both configurations therefore
+retain effective batch 32, the same preference records, objective, learning
+rate, epoch count, and model-selection role.
+
+Every consumer fingerprints the proxy checkpoint, so a 1.4B run requires new
+CPDPO geometry/calibration, AdvPO confidence/reference artifacts, policy runs,
+and offline evaluations in separate directories. PPO, PairPPO, CPDPO, and
+any additive comparator in that capacity track must all use the same frozen
+1.4B proxy. Reusing 44M-derived artifacts or comparing a 1.4B-proxy treatment
+against a 44M-proxy control is invalid. Gold reward remains evaluation-only
+and is not used to train or select the 1.4B proxy.

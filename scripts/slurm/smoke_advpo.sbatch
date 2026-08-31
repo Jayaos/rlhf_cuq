@@ -28,6 +28,12 @@ RIDGE_LAMBDA="${ADVPO_RIDGE_LAMBDA:-1.0}"
 OUTPUT_ROOT="${ADVPO_SMOKE_OUTPUT_ROOT:-$JOB_STORAGE_ROOT/outputs/advpo_smoke}"
 CONFIDENCE_DIR="${ADVPO_SMOKE_CONFIDENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo_smoke/confidence}"
 REFERENCE_DIR="${ADVPO_SMOKE_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo_smoke/references_seed_1}"
+ARTIFACT_BATCH_SIZE="${ADVPO_ARTIFACT_BATCH_SIZE:-64}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: ADVPO_ARTIFACT_BATCH_SIZE and CPDPO_PROXY_BATCH_SIZE must be positive integers" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -49,6 +55,7 @@ srun python scripts/prepare_advpo_confidence.py \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$CONFIDENCE_DIR" \
   --ridge-lambda "$RIDGE_LAMBDA" \
+  --batch-size "$ARTIFACT_BATCH_SIZE" \
   --max-rm-pairs 64 \
   --device cuda:0
 
@@ -60,6 +67,7 @@ srun python scripts/prepare_advpo_references.py \
   --output-dir "$REFERENCE_DIR" \
   --base-seed 1 \
   --batch-size 2 \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --artifact-scope smoke \
   --device cuda:0 \
   --dtype bf16
@@ -74,6 +82,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --checkpoint-every-rollouts 1 \
   --pair-batch-size 1 \
   --pair-chunk-size 4 \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
   --proxy-rm "$PROXY_RM_PATH" \

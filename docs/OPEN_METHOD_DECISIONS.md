@@ -94,3 +94,18 @@ There is no default for a scientific artifact: the launch requires a declared
 value, changing it creates a different artifact fingerprint, and the selected
 value must be reported. The smoke-only template explicitly uses `1.0` and does
 not freeze that value for a scientific run.
+
+## Frozen for the matched-capacity proxy-RM ablation
+
+- method-track identity `proxy_rm_1p4b`; the 44M main result remains unchanged;
+- initial RM weights from the separately pinned `assets/initial_sft_policy`;
+- scalar-head conversion and full preference fine-tuning rather than treating
+  causal-language-model logits as rewards;
+- unchanged prompt-disjoint `D_rm_train` and `D_rm_val` roles;
+- the Coste RM loss, learning rate, five epochs, and effective batch size 32;
+- microbatch 1, accumulation 32, gradient checkpointing, and reduced scoring
+  batches as declared memory adaptations;
+- a newly fingerprinted proxy checkpoint and new capacity-specific downstream
+  artifacts, policy runs, evaluations, and plots;
+- no mixing of 44M and 1.4B proxy checkpoints within a comparison and no gold
+  access during RM or policy training.

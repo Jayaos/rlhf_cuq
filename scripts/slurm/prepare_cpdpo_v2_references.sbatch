@@ -26,6 +26,12 @@ POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${CPDPO_V2_SCHEDULE:-artifacts/prompt_schedules/seed_${SEED}.jsonl}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+GENERATION_BATCH_SIZE="${CPDPO_V2_GENERATION_BATCH_SIZE:-16}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$GENERATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO_V2_GENERATION_BATCH_SIZE and CPDPO_PROXY_BATCH_SIZE must be positive integers" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -70,6 +76,8 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --output-dir "$REFERENCE_DIR" \
   --base-seed "$SEED" \
   --alpha "$CPDPO_ALPHA" \
+  --batch-size "$GENERATION_BATCH_SIZE" \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
   --dtype bf16
 

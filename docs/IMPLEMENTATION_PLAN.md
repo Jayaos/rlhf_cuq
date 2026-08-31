@@ -164,3 +164,22 @@ authors' unpublished code or their Section 5.2 LLaMA/data configuration.
 The dependency-free suite and Python compilation pass locally. The pinned
 PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
 `scripts/slurm/smoke_advpo.sbatch` in the cluster environment.
+
+## 11. Add matched-capacity 1.4B proxy-RM ablation — implemented locally; cluster smoke pending
+
+- Preserve the existing 44M proxy configuration, checkpoints, artifacts, and
+  experiment outputs unchanged.
+- Branch `assets/initial_sft_policy` through the existing manifest-backed
+  `GPTNeoXRewardModel` trainer and train only on `D_rm_train`, with final model
+  selection/validation on `D_rm_val`.
+- Retain the Coste RM objective, learning rate, five epochs, and effective
+  batch 32; use gradient checkpointing and smaller micro/evaluation batches as
+  memory-only adaptations for the 1.4B model.
+- Write checkpoints and checksums to a separately named scratch-backed output
+  by default, with the same strict non-overwrite and latest-checkpoint resume
+  validation as the 44M job.
+- Make offline artifact preparation, online proxy scoring, and evaluation
+  proxy batch sizes runtime-configurable so the larger frozen RM can use the
+  existing fingerprinted pipeline.
+- Add a real one-GPU 1.4B RM smoke, static launch/config tests, and a runbook
+  that requires fresh capacity-specific artifacts and outputs for all methods.

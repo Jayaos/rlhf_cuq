@@ -27,6 +27,11 @@ SCHEDULE="${CPDPO_SMOKE_SCHEDULE:-artifacts/prompt_schedules/smoke_seed_1.jsonl}
 OUTPUT_ROOT="${CPDPO_V2_SMOKE_OUTPUT_ROOT:-$JOB_STORAGE_ROOT/outputs/reward_overoptimization_v2_smoke}"
 REFERENCE_DIR="${CPDPO_V2_SMOKE_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/seed_1}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO_PROXY_BATCH_SIZE must be a positive integer" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -67,6 +72,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --base-seed 1 \
   --alpha "$CPDPO_ALPHA" \
   --batch-size 2 \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
   --dtype bf16 \
   "${ALLOW_ARGS[@]}"
@@ -81,6 +87,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --checkpoint-every-rollouts 1 \
   --pair-batch-size 1 \
   --pair-chunk-size 4 \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
   --proxy-rm "$PROXY_RM_PATH" \

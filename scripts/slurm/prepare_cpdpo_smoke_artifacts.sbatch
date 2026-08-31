@@ -28,9 +28,10 @@ MANIFEST_PATH="${CPDPO_MANIFEST_PATH:-data/processed/alpaca_farm_prompt_disjoint
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 RM_PAIRS="${CPDPO_SMOKE_RM_PAIRS:-64}"
 CAL_PAIRS="${CPDPO_SMOKE_CAL_PAIRS:-64}"
+ARTIFACT_BATCH_SIZE="${CPDPO_ARTIFACT_BATCH_SIZE:-32}"
 
-if [[ ! "$RM_PAIRS" =~ ^[1-9][0-9]*$ ]] || [[ ! "$CAL_PAIRS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: CPDPO_SMOKE_RM_PAIRS and CPDPO_SMOKE_CAL_PAIRS must be positive integers" >&2
+if [[ ! "$RM_PAIRS" =~ ^[1-9][0-9]*$ ]] || [[ ! "$CAL_PAIRS" =~ ^[1-9][0-9]*$ ]] || [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO smoke pair counts and CPDPO_ARTIFACT_BATCH_SIZE must be positive integers" >&2
   exit 2
 fi
 
@@ -66,7 +67,7 @@ srun python scripts/prepare_cpdpo_artifacts.py \
   --output-dir "$ARTIFACT_DIR" \
   --alpha "$CPDPO_ALPHA" \
   --device cuda:0 \
-  --batch-size 32 \
+  --batch-size "$ARTIFACT_BATCH_SIZE" \
   --max-rm-pairs "$RM_PAIRS" \
   --max-cal-pairs "$CAL_PAIRS"
 

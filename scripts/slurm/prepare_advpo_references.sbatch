@@ -25,6 +25,12 @@ POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${ADVPO_SCHEDULE:-artifacts/prompt_schedules/seed_${SEED}.jsonl}"
 REFERENCE_DIR="${ADVPO_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo/references/seed_${SEED}}"
+GENERATION_BATCH_SIZE="${ADVPO_GENERATION_BATCH_SIZE:-16}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$GENERATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: ADVPO_GENERATION_BATCH_SIZE and CPDPO_PROXY_BATCH_SIZE must be positive integers" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -48,6 +54,8 @@ srun python scripts/prepare_advpo_references.py \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$REFERENCE_DIR" \
   --base-seed "$SEED" \
+  --batch-size "$GENERATION_BATCH_SIZE" \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
   --dtype bf16
 

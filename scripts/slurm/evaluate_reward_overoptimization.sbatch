@@ -33,6 +33,11 @@ OUTPUT_ROOT="${CPDPO_OUTPUT_ROOT:-outputs/reward_overoptimization}"
 EVAL_SPLIT="${CPDPO_EVAL_SPLIT:-D_rl_val_prompts}"
 NUM_PROMPTS="${CPDPO_EVAL_NUM_PROMPTS:-0}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO_PROXY_BATCH_SIZE must be a positive integer" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -59,6 +64,7 @@ srun python scripts/evaluate_policy_checkpoints.py \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --split "$EVAL_SPLIT" \
   --num-prompts "$NUM_PROMPTS" \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
   --dtype bf16
 

@@ -24,6 +24,11 @@ JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 MANIFEST_PATH="${CPDPO_MANIFEST_PATH:-data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+ARTIFACT_BATCH_SIZE="${CPDPO_ARTIFACT_BATCH_SIZE:-64}"
+if [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO_ARTIFACT_BATCH_SIZE must be a positive integer" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -57,6 +62,6 @@ srun python scripts/prepare_cpdpo_artifacts.py \
   --output-dir "$ARTIFACT_DIR" \
   --alpha "$CPDPO_ALPHA" \
   --device cuda:0 \
-  --batch-size 64
+  --batch-size "$ARTIFACT_BATCH_SIZE"
 
-echo "PASS CPDPO offline artifacts: alpha=$CPDPO_ALPHA path=$ARTIFACT_DIR"
+echo "PASS CPDPO offline artifacts: alpha=$CPDPO_ALPHA batch_size=$ARTIFACT_BATCH_SIZE path=$ARTIFACT_DIR"

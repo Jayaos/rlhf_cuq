@@ -579,6 +579,150 @@ multi-GPU RM job: each array element is an independent one-GPU seed. Phoenix
 uses QOS and assigns the resource pool from the request; do not add an arbitrary
 partition copied from another cluster.
 
+#### Additive matched-capacity ablation: 1.4B proxy RM
+
+This ablation branches the already downloaded `assets/initial_sft_policy`
+checkpoint into a **separate** `GPTNeoXRewardModel`, adds/trains its scalar
+reward head, and preference-trains the full 1.4B branch on the same
+`D_rm_train`. It validates on the same `D_rm_val`. The untouched causal LM is
+not a usable reward model, and the policy and RM branches do not share live
+weights after initialization.
+
+The configuration retains the 44M track's Coste RM loss, learning rate, five
+epochs, and effective batch size 32. For memory, it uses microbatch 1,
+accumulation 32, gradient checkpointing, and scoring batch 1. It is a named RM
+capacity ablation; it does not replace the checked 44M experiment.
+
+First run the real-model smoke. Both smoke and full outputs default to scratch
+because a 1.4B optimizer checkpoint is much larger than the 44M checkpoint:
+
+```bash
+cd /storage/project/r-yxie77-0/$USER/projects/rlhf_cuq
+export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
+
+SMOKE_JOB=$(sbatch --parsable \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT" \
+  scripts/slurm/smoke_proxy_rm_1p4b.sbatch | cut -d';' -f1)
+echo "$SMOKE_JOB"
+```
+
+Success ends with `PASS matched-capacity 1.4B proxy-RM pipeline smoke`. The
+smoke checkpoint is reduced-data integration evidence only and must not be
+used for a scientific policy run. Then submit the full seed-1 RM:
+
+```bash
+RM_JOB=$(sbatch --parsable \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",RM_SEED=1 \
+  scripts/slurm/train_proxy_rm_1p4b.sbatch | cut -d';' -f1)
+echo "$RM_JOB"
+```
+
+The full job requests one A100/H100/H200, 64 GiB host RAM, and 48 hours. Its
+default frozen output and checksum are:
+
+```text
+$JOB_ROOT/models/rm-pythia-1p4b-prompt-disjoint_seed1
+$JOB_ROOT/checksums/rm-pythia-1p4b-prompt-disjoint_seed1.sha256
+```
+
+Require a completed job, a final validation record, finite normalization, and
+model weights before using it:
+
+```bash
+export PROXY_RM_1P4B=$JOB_ROOT/models/rm-pythia-1p4b-prompt-disjoint_seed1
+
+sacct -j "$RM_JOB" --format=JobID,State,ExitCode,Elapsed,MaxRSS
+test -f "$PROXY_RM_1P4B/config.json"
+test -f "$PROXY_RM_1P4B/final_eval_results.json"
+test -f "$JOB_ROOT/checksums/rm-pythia-1p4b-prompt-disjoint_seed1.sha256"
+```
+
+Resume works like the 44M job, but the checkpoint and output both remain under
+the 1.4B scratch directory:
+
+```bash
+sbatch \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",RM_RESUME_CHECKPOINT="$PROXY_RM_1P4B/checkpoint-2000" \
+  scripts/slurm/train_proxy_rm_1p4b.sbatch
+```
+
+Do not reuse the 44M CPDPO or AdvPO artifacts. Build a newly fingerprinted
+1.4B geometry/calibration set with a smaller scoring batch:
+
+```bash
+export CPDPO_1P4B_ARTIFACTS=$JOB_ROOT/artifacts/cpdpo/proxy_rm_1p4b_seed1
+
+sbatch \
+  --export=ALL,CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",CPDPO_ARTIFACT_DIR="$CPDPO_1P4B_ARTIFACTS",CPDPO_ARTIFACT_BATCH_SIZE=2 \
+  scripts/slurm/prepare_cpdpo_artifacts.sbatch
+```
+
+The larger feature dimension makes this artifact distinct even though the
+equations and RM data are unchanged. For a one-rollout PPO/PairPPO/CPDPO
+integration check, use a new output root and proxy scoring batch 2:
+
+```bash
+export OUTPUT_1P4B=$JOB_ROOT/outputs/reward_overoptimization_proxy_rm_1p4b_smoke
+
+sbatch --array=0-2 \
+  --export=ALL,CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",CPDPO_ARTIFACT_DIR="$CPDPO_1P4B_ARTIFACTS",CPDPO_PROXY_BATCH_SIZE=2,CPDPO_SMOKE_OUTPUT_ROOT="$OUTPUT_1P4B" \
+  scripts/slurm/smoke_reward_overoptimization.sbatch
+```
+
+After that smoke passes, a seed-1 full comparison uses the same proxy and
+capacity-specific artifact paths for every method:
+
+```bash
+export OUTPUT_1P4B=$JOB_ROOT/outputs/reward_overoptimization_proxy_rm_1p4b
+
+sbatch --array=0-2 \
+  --export=ALL,ROLLOUT_STEPS=100,CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",CPDPO_ARTIFACT_DIR="$CPDPO_1P4B_ARTIFACTS",CPDPO_PROXY_BATCH_SIZE=2,CPDPO_OUTPUT_ROOT="$OUTPUT_1P4B" \
+  scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+The same rule applies to AdvPO and CPDPOv2: pass the 1.4B proxy path, use
+capacity-specific confidence/reference directories, and set
+`CPDPO_PROXY_BATCH_SIZE=2`. Never compare a 1.4B-proxy treatment against a
+44M-proxy control as though proxy capacity were held fixed. Offline evaluation
+must also receive the same `CPDPO_PROXY_RM_PATH`, output root, and reduced
+proxy batch.
+
+For the existing seed-1 AdvPO comparison, declare the ridge and use new
+confidence/reference locations. Reusing the same declared ridge as the 44M run
+isolates one configuration choice, but the paper does not publish a canonical
+ridge and representation scale can change with RM capacity:
+
+```bash
+export ADVPO_RIDGE_LAMBDA=1.0
+export ADVPO_1P4B_CONF=$JOB_ROOT/artifacts/advpo/proxy_rm_1p4b_seed1_ridge_1
+export ADVPO_1P4B_REFS=$JOB_ROOT/artifacts/advpo/proxy_rm_1p4b_references/seed_1
+
+sbatch \
+  --export=ALL,ADVPO_RIDGE_LAMBDA="$ADVPO_RIDGE_LAMBDA",CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",ADVPO_CONFIDENCE_DIR="$ADVPO_1P4B_CONF",ADVPO_ARTIFACT_BATCH_SIZE=2 \
+  scripts/slurm/prepare_advpo_confidence.sbatch
+
+sbatch \
+  --export=ALL,ADVPO_SEED=1,CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",ADVPO_REFERENCE_DIR="$ADVPO_1P4B_REFS",CPDPO_PROXY_BATCH_SIZE=2 \
+  scripts/slurm/prepare_advpo_references.sbatch
+
+sbatch --array=1 \
+  --export=ALL,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA="$ADVPO_RIDGE_LAMBDA",CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",ADVPO_CONFIDENCE_DIR="$ADVPO_1P4B_CONF",ADVPO_REFERENCE_DIR="$ADVPO_1P4B_REFS",CPDPO_PROXY_BATCH_SIZE=2,CPDPO_OUTPUT_ROOT="$OUTPUT_1P4B" \
+  scripts/slurm/train_advpo.sbatch
+```
+
+Evaluate only after the relevant policy jobs complete. The evaluator rejects a
+proxy fingerprint that does not match the training metadata:
+
+```bash
+sbatch --array=0-2 \
+  --export=ALL,GOLD_RM_PATH="$GOLD_RM_PATH",CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",CPDPO_PROXY_BATCH_SIZE=2,CPDPO_OUTPUT_ROOT="$OUTPUT_1P4B" \
+  scripts/slurm/evaluate_reward_overoptimization.sbatch
+
+sbatch --array=1 \
+  --export=ALL,GOLD_RM_PATH="$GOLD_RM_PATH",ADVPO_B=1,CPDPO_PROXY_RM_PATH="$PROXY_RM_1P4B",CPDPO_PROXY_BATCH_SIZE=2,CPDPO_OUTPUT_ROOT="$OUTPUT_1P4B" \
+  scripts/slurm/evaluate_advpo.sbatch
+```
+
 ### Experiment 2: one-update PPO smoke
 
 The checked-in batch job requests one A100/H100/H200-class GPU, four CPUs,

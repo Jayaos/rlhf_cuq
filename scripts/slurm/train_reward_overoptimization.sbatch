@@ -36,6 +36,11 @@ PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1
 SCHEDULE="artifacts/prompt_schedules/seed_${SEED}.jsonl"
 OUTPUT_ROOT="${CPDPO_OUTPUT_ROOT:-outputs/reward_overoptimization}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
+if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CPDPO_PROXY_BATCH_SIZE must be a positive integer" >&2
+  exit 2
+fi
 
 cd "$PROJECT_ROOT"
 set +u
@@ -80,10 +85,11 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --checkpoint-every-rollouts 10 \
   --pair-batch-size 32 \
   --pair-chunk-size 64 \
+  --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed "$SEED" \
   --policy-model "$POLICY_PATH" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-root "$OUTPUT_ROOT" \
   "${EXTRA_ARGS[@]}"
 
-echo "PASS method=$METHOD seed=$SEED rollouts=$ROLLOUT_STEPS cpdpo_alpha=$CPDPO_ALPHA"
+echo "PASS method=$METHOD seed=$SEED rollouts=$ROLLOUT_STEPS cpdpo_alpha=$CPDPO_ALPHA proxy_batch_size=$PROXY_BATCH_SIZE"

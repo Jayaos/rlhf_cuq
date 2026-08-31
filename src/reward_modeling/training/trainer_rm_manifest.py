@@ -25,10 +25,45 @@ from src.reward_modeling.training import trainer_rm as legacy_trainer  # noqa: E
 
 
 def _with_local_model_family(parser: Callable[[], Any]) -> Callable[[], Any]:
-    """Apply the validated family hint after legacy configuration parsing."""
+    """Apply validated local-checkpoint and memory-safe scoring overrides."""
 
     def parse() -> Any:
-        return apply_local_model_family(parser())
+        conf = apply_local_model_family(parser())
+        normalization_batch_size = getattr(
+            conf, "reward_normalization_batch_size", None
+        )
+        if normalization_batch_size is not None:
+            if (
+                not isinstance(normalization_batch_size, int)
+                or isinstance(normalization_batch_size, bool)
+                or normalization_batch_size < 1
+            ):
+                raise ValueError(
+                    "reward_normalization_batch_size must be a positive integer"
+                )
+            uncapped_get_reward = legacy_trainer.get_reward
+
+            def memory_safe_get_reward(
+                samples: Any,
+                model: Any,
+                tokenizer: Any,
+                device: Any,
+                batch_size: int = 128,
+            ) -> Any:
+                return uncapped_get_reward(
+                    samples,
+                    model,
+                    tokenizer,
+                    device,
+                    batch_size=min(batch_size, normalization_batch_size),
+                )
+
+            legacy_trainer.get_reward = memory_safe_get_reward
+            print(
+                "RM reward-normalization batch-size cap:",
+                normalization_batch_size,
+            )
+        return conf
 
     return parse
 

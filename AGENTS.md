@@ -383,3 +383,22 @@ explicit exchangeability assumption. Call `R_v2` a reference-anchored robust
 proxy margin, not a guaranteed lower bound on gold reward. Gold remains
 evaluation-only. Use separate cache, run, evaluation, and plot identities for
 v2, and preserve all existing v1 public interfaces.
+
+## 17. Additive matched-capacity proxy-RM ablation
+
+The user authorized an additive capacity experiment that branches
+`assets/initial_sft_policy` into a separate 1.4B `GPTNeoXRewardModel` and
+preference-trains it on the unchanged `D_rm_train`, with validation on
+`D_rm_val`. The raw SFT causal LM is never treated as a reward scorer.
+
+Preserve the 44M experiment as the frozen baseline. The 1.4B RM track retains
+the Coste loss, learning rate, five epochs, and effective batch size 32; its
+microbatch 1, accumulation 32, gradient checkpointing, and reduced evaluation/
+normalization/proxy-scoring batches are declared memory adaptations.
+
+Every downstream method in a matched-capacity comparison must use the same
+frozen 1.4B proxy checkpoint. Build new CPDPO geometry/calibration, AdvPO
+confidence/reference caches, policy outputs, evaluations, and plots under
+capacity-specific directories. Never mix a 1.4B-proxy treatment with a
+44M-proxy control or reuse artifacts across proxy fingerprints. Gold remains
+evaluation-only.
