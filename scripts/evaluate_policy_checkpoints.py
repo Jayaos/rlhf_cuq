@@ -271,6 +271,8 @@ def main() -> None:  # noqa: C901
             expected["policy_variant"] = metadata["policy_variant"]
         if "policy_architecture" in metadata:
             expected["policy_architecture"] = metadata["policy_architecture"]
+        if "policy_optimization" in metadata:
+            expected["policy_optimization"] = metadata["policy_optimization"]
         if "reference_anchor" in metadata:
             expected["reference_anchor"] = metadata["reference_anchor"]
         if "advpo" in metadata:
@@ -415,6 +417,14 @@ def main() -> None:  # noqa: C901
                 "experiment_track": metadata.get("experiment_track", "main"),
                 "policy_variant": recorded_policy_variant,
                 "policy_architecture": policy_architecture,
+                "policy_learning_rate": (metadata.get("policy_optimization") or {}).get("learning_rate"),
+                "policy_scheduler_eta_min": (metadata.get("policy_optimization") or {}).get(
+                    "scheduler_eta_min"
+                ),
+                "policy_num_layers_unfrozen": (metadata.get("policy_optimization") or {}).get(
+                    "num_layers_unfrozen"
+                ),
+                "policy_max_grad_norm": (metadata.get("policy_optimization") or {}).get("max_grad_norm"),
                 "cpdpo_alpha": cpdpo_alpha,
                 "advpo_B": metadata.get("advpo_B"),
                 "seed": metadata["base_seed"],

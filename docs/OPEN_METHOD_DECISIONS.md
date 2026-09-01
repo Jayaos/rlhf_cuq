@@ -39,6 +39,11 @@ Gold reward cannot be used to select alpha.
 - A later nonzero common KL beta track.
 - Predeclared CPDPO alpha sensitivity values, provided they are reported as
   ablations and never selected using gold reward.
+- A separately named 70M policy stabilization profile. Its learning rate,
+  number of unfrozen transformer layers, and gradient-norm limit must be
+  declared before launch, shared by all methods in that comparison, and
+  reported. The failed literal transfer of the 1.4B profile is not a valid
+  completed experiment, and gold reward cannot be used to choose the profile.
 
 ## Out of scope for v1
 

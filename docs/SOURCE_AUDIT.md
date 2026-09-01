@@ -343,13 +343,30 @@ The two frozen policy identities are:
 ```
 
 Every method in one comparison must use the same selected checkpoint as both
-trainable initialization and frozen KL reference. The 70M option retains the
-same two-unfrozen-layer policy configuration and the same prompt, response,
-optimizer, checkpoint, and evaluation budgets as the 1.4B option; it is not a
-claim of equal trainable-parameter fraction. Training/evaluation metadata must
-record the named policy variant, architecture dimensions, and model
-fingerprint, and consumers must reject a path whose local `config.json` does
-not match the declared variant or is not a GPT-NeoX causal LM.
+trainable initialization and frozen KL reference. The initial 70M integration
+retained the same two-unfrozen-layer policy configuration and optimizer as the
+1.4B option. A 2026-08-31 Phoenix run then supplied direct evidence that this
+literal transfer is numerically unstable: scalar PPO's loss changed from
+`7.97` to `6.23927751606272e16`, then `inf`/`nan`, during its first rollout,
+and the next generation failed because the policy probabilities were
+non-finite. Policy architecture validation and the first forward/generation
+pass had already succeeded, so this is not a 44M-RM-as-generator or checkpoint
+selection error.
+
+The inherited 1.4B optimizer remains the default and is not silently changed.
+The 70M capacity track instead exposes explicit learning-rate,
+`num_layers_unfrozen`, and maximum-gradient-norm controls. Any non-default
+stabilization profile must be declared at launch, recorded in run/checkpoint
+metadata, applied identically to every compared method, and written to a new
+output root. It is a named optimization-profile ablation rather than a
+model-size-only comparison. Non-finite losses or gradient norms are fatal; the
+trainer may not continue producing corrupted checkpoints.
+
+Prompt, response, update, checkpoint, and evaluation budgets remain common.
+Training/evaluation metadata must record the named policy variant,
+architecture dimensions, model fingerprint, and resolved optimization
+profile, and consumers must reject a path whose local `config.json` does not
+match the declared variant or is not a GPT-NeoX causal LM.
 
 Policy outputs and plots use capacity-specific roots. A policy-independent
 CPDPO geometry/calibration artifact may be reused when and only when its proxy

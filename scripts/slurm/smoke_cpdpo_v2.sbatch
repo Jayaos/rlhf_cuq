@@ -79,6 +79,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \

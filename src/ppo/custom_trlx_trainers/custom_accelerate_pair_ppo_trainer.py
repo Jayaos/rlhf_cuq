@@ -136,6 +136,11 @@ class CustomAcceleratePairPPOTrainer(ExperimentCheckpointMixin, CustomAccelerate
             clip_epsilon=self.pair_config.clip_epsilon,
             kl_beta=self.pair_config.kl_beta,
         )
+        if not torch.isfinite(loss):
+            raise FloatingPointError(
+                "Non-finite paired PPO loss before backward at optimizer step "
+                f"{getattr(self, 'iter_count', 0) + 1}; no optimizer step was applied"
+            )
         probabilities = torch.softmax(logits.float(), dim=-1)
         entropy = -(probabilities * torch.log_softmax(logits.float(), dim=-1)).sum(-1)
         stats.update(

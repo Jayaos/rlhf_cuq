@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from types import MethodType
 
 
@@ -15,6 +16,12 @@ def install_gradient_clipping(trainer, max_grad_norm: float) -> None:
     def clipped_step(_optimizer, *args, **kwargs):
         norm = trainer.accelerator.clip_grad_norm_(trainer.model.parameters(), max_grad_norm)
         trainer.last_gradient_norm = float(norm.detach().float().item())
+        if not math.isfinite(trainer.last_gradient_norm):
+            trainer.opt.zero_grad()
+            raise FloatingPointError(
+                "Non-finite policy gradient norm before optimizer step "
+                f"{getattr(trainer, 'iter_count', 0) + 1}; optimizer step was not applied"
+            )
         trainer.accelerator.log(
             {"optimization/gradient_norm": trainer.last_gradient_norm},
             step=getattr(trainer, "iter_count", 0) + 1,

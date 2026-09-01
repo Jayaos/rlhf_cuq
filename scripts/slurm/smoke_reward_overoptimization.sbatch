@@ -91,6 +91,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-root "$OUTPUT_ROOT" \
   "${EXTRA_ARGS[@]}"

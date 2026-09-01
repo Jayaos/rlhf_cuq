@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import sys
 from argparse import Namespace
 from dataclasses import asdict
@@ -85,6 +86,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--proxy-batch-size", type=int, default=64)
     parser.add_argument("--kl-beta", type=float, default=0.0)
     parser.add_argument(
+        "--optimizer-learning-rate",
+        type=float,
+        help="Explicit policy optimizer learning rate; omit to retain the audited YAML value",
+    )
+    parser.add_argument(
+        "--num-layers-unfrozen",
+        type=int,
+        help="Explicit number of top policy transformer layers to unfreeze; omit to retain the YAML value",
+    )
+    parser.add_argument(
+        "--max-grad-norm",
+        type=float,
+        default=1.0,
+        help="Policy gradient-norm limit applied immediately before every optimizer step",
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         default=ALPHA,
@@ -151,6 +168,14 @@ def main() -> None:  # noqa: C901
         raise ValueError("rollout-steps and prompts-per-rollout must be positive")
     if args.checkpoint_every_rollouts < 1:
         raise ValueError("checkpoint interval must be positive")
+    if args.optimizer_learning_rate is not None and (
+        not math.isfinite(args.optimizer_learning_rate) or args.optimizer_learning_rate <= 0.0
+    ):
+        raise ValueError("optimizer-learning-rate must be positive")
+    if args.num_layers_unfrozen is not None and args.num_layers_unfrozen < 0:
+        raise ValueError("num-layers-unfrozen must be nonnegative")
+    if not math.isfinite(args.max_grad_norm) or args.max_grad_norm <= 0.0:
+        raise ValueError("max-grad-norm must be positive")
     cpdpo_methods = {"cpdpo", "cpdpo_v2"}
     if args.method in cpdpo_methods and (not args.geometry or not args.calibration):
         raise ValueError(f"{args.method} requires --geometry and --calibration")
@@ -226,6 +251,19 @@ def main() -> None:  # noqa: C901
     trlx_config.train.seed = seeds.training
     trlx_config.tokenizer.tokenizer_path = sft_config.model_name
     trlx_config.model.model_path = sft_config.model_name
+    if args.optimizer_learning_rate is not None:
+        trlx_config.optimizer.kwargs["lr"] = args.optimizer_learning_rate
+        # A copied scheduler floor above the new initial rate would increase
+        # the LR during a run, contrary to the requested stabilization.
+        trlx_config.scheduler.kwargs["eta_min"] = min(
+            float(trlx_config.scheduler.kwargs["eta_min"]), args.optimizer_learning_rate
+        )
+    if args.num_layers_unfrozen is not None:
+        if args.num_layers_unfrozen > int(policy_architecture["num_hidden_layers"]):
+            raise ValueError(
+                "num-layers-unfrozen exceeds the selected policy's transformer layer count"
+            )
+        trlx_config.model.num_layers_unfrozen = args.num_layers_unfrozen
     trlx_config.method.ppo_epochs = 4
     trlx_config.method.gen_kwargs.update(
         {"max_new_tokens": 128, "top_k": 0, "top_p": 1.0, "do_sample": True, "temperature": 1.0}
@@ -394,6 +432,12 @@ def main() -> None:  # noqa: C901
         "data_manifest_sha256": sha256_file(data_manifest),
         "policy_variant": args.policy_variant,
         "policy_architecture": policy_architecture,
+        "policy_optimization": {
+            "learning_rate": float(trlx_config.optimizer.kwargs["lr"]),
+            "scheduler_eta_min": float(trlx_config.scheduler.kwargs["eta_min"]),
+            "num_layers_unfrozen": int(trlx_config.model.num_layers_unfrozen),
+            "max_grad_norm": float(args.max_grad_norm),
+        },
         "initial_policy_fingerprint": initial_policy_fingerprint,
         "reference_policy_fingerprint": initial_policy_fingerprint,
         "proxy_rm_fingerprint": proxy_rm_fingerprint,
@@ -408,7 +452,7 @@ def main() -> None:  # noqa: C901
         "experiment_seeds": asdict(seeds),
         "experiment_context": experiment_context,
         "resume_from_checkpoint": str(resume_checkpoint) if resume_checkpoint is not None else None,
-        "max_grad_norm": 1.0,
+        "max_grad_norm": args.max_grad_norm,
     }
     if pair_config is not None:
         trlx_config.train.trainer_kwargs["pair_method_config"] = pair_config.to_dict()
@@ -440,6 +484,7 @@ def main() -> None:  # noqa: C901
         "data_manifest_sha256": sha256_file(data_manifest),
         "policy_variant": args.policy_variant,
         "policy_architecture": policy_architecture,
+        "policy_optimization": experiment_context["policy_optimization"],
         "initial_policy_path": str(Path(sft_config.model_name).resolve()),
         "reference_policy_path": str(Path(sft_config.model_name).resolve()),
         "proxy_rm_path": str(Path(rank_config.model_names[0]).resolve()),

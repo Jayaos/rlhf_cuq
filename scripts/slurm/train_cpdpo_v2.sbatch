@@ -100,6 +100,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --base-seed "$SEED" \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \

@@ -94,6 +94,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --base-seed "$SEED" \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --advpo-confidence "$CONFIDENCE_DIR/confidence_matrix.pt" \
   --reference-cache "$REFERENCE_DIR/reference_cache.pt" \

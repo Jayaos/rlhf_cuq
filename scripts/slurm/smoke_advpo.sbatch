@@ -83,6 +83,7 @@ srun python scripts/prepare_advpo_references.py \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$REFERENCE_DIR" \
   --base-seed 1 \

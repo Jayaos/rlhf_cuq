@@ -101,6 +101,7 @@ def load_records(
                     record["_cpdpo_alpha"] = recorded_alpha if method in {"cpdpo", "cpdpo_v2"} else None
                     record["_advpo_B"] = run_metadata.get("advpo_B") if method == "advpo" else None
                     record["_policy_variant"] = recorded_policy_variant
+                    record["_policy_optimization"] = run_metadata.get("policy_optimization")
                     records.append(record)
     if not records:
         raise FileNotFoundError(f"No checkpoint metrics found under {root}")
@@ -112,6 +113,11 @@ def load_records(
     )
     if methods != expected_methods:
         raise ValueError(f"Expected {sorted(expected_methods)}, found {sorted(methods)}")
+    optimization_profiles = {
+        json.dumps(record.get("_policy_optimization"), sort_keys=True) for record in records
+    }
+    if len(optimization_profiles) != 1:
+        raise ValueError("Compared methods use different policy optimization profiles")
     return records
 
 

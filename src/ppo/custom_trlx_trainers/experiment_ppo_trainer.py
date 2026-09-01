@@ -1,5 +1,7 @@
 """Fair-budget scalar PPO control for the CPDPO experiment."""
 
+import torch
+
 from trlx.pipeline.offline_pipeline import PromptPipeline
 from trlx.trainer import register_trainer
 from trlx.utils import infinite_dataloader
@@ -53,6 +55,15 @@ class ExperimentAcceleratePPOTrainer(ExperimentCheckpointMixin, CustomAccelerate
     def generate_eval(self, input_ids, attention_mask=None, **kwargs):
         with self.evaluation_seed_stream.activate():
             return super().generate_eval(input_ids, attention_mask=attention_mask, **kwargs)
+
+    def loss(self, batch):
+        loss, stats = super().loss(batch)
+        if not torch.isfinite(loss):
+            raise FloatingPointError(
+                "Non-finite scalar PPO loss before backward at optimizer step "
+                f"{getattr(self, 'iter_count', 0) + 1}; no optimizer step was applied"
+            )
+        return loss, stats
 
     def make_experience(self, num_rollouts: int = 512, iter_count: int = 0):
         collector = self.reward_fn if hasattr(self.reward_fn, "start_rollout") else None

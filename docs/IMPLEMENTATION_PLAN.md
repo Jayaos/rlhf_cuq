@@ -202,3 +202,8 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
   architecture-validated escape hatch.
 - Add dependency-free unit/static tests and exact cluster commands for both
   policy variants.
+- Expose and persist an explicit policy optimization profile (learning rate,
+  unfrozen layer count, and gradient-norm limit) after the literal 1.4B profile
+  diverged on the first real 70M PPO rollout. Keep the 1.4B/default profile
+  unchanged, require a distinct output root for overrides, and fail at the
+  first non-finite loss or gradient rather than advancing a corrupted run.

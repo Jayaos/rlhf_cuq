@@ -68,6 +68,9 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn('POLICY_VARIANT="${RLHF_POLICY_VARIANT:-1p4b}"', helper)
         self.assertIn('POLICY_DEFAULT_PATH="assets/proxy_rm_sft_base"', helper)
         self.assertIn("RLHF_POLICY_VARIANT must be exactly", helper)
+        self.assertIn("RLHF_POLICY_LEARNING_RATE", helper)
+        self.assertIn("RLHF_POLICY_NUM_LAYERS_UNFROZEN", helper)
+        self.assertIn("RLHF_POLICY_MAX_GRAD_NORM", helper)
 
         jobs = (
             "train_reward_overoptimization.sbatch",
@@ -88,6 +91,22 @@ class RuntimeConfigTests(unittest.TestCase):
                 self.assertIn("source scripts/configure_policy_variant.sh", text)
                 self.assertIn("scripts/validate_policy_variant.py", text)
                 self.assertIn('--policy-variant "$POLICY_VARIANT"', text)
+
+        for filename in (
+            "train_reward_overoptimization.sbatch",
+            "smoke_reward_overoptimization.sbatch",
+            "train_cpdpo_v2.sbatch",
+            "smoke_cpdpo_v2.sbatch",
+            "train_advpo.sbatch",
+            "smoke_advpo.sbatch",
+        ):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            self.assertIn('"${POLICY_TRAINING_ARGS[@]}"', text)
+
+        trainer = (ROOT / "src/ppo/trainer_reward_overoptimization.py").read_text(encoding="utf-8")
+        self.assertIn("--optimizer-learning-rate", trainer)
+        self.assertIn("--num-layers-unfrozen", trainer)
+        self.assertIn('"policy_optimization"', trainer)
 
         for filename in (
             "train_reward_overoptimization.sbatch",

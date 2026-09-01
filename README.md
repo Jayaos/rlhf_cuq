@@ -752,27 +752,45 @@ python scripts/validate_policy_variant.py \
 ```
 
 The 1.4B behavior and locations remain unchanged when the variable is omitted.
-For a complete one-rollout 70M smoke with the existing 44M proxy RM and full
-CPDPO artifacts:
+The first literal 70M transfer passed checkpoint validation and generation but
+diverged during PPO optimization: loss changed from `7.97` to `6.2e16`, then
+`inf`/`nan`, in the first rollout. This is an optimization-profile failure,
+not a model-loading or GPU-memory failure. Do not launch another 100-rollout
+run until a complete one-rollout smoke passes.
+
+The launch path accepts three explicit, recorded overrides:
+
+| Environment variable | Trainer argument | Audited default |
+|---|---|---|
+| `RLHF_POLICY_LEARNING_RATE` | `--optimizer-learning-rate` | `1e-6` |
+| `RLHF_POLICY_NUM_LAYERS_UNFROZEN` | `--num-layers-unfrozen` | `2` |
+| `RLHF_POLICY_MAX_GRAD_NORM` | `--max-grad-norm` | `1.0` |
+
+Start with the conservative 70M stabilization smoke below. It uses one top
+layer (the closest integer match to the 1.4B trainable-layer fraction) and a
+constant `1e-7` learning rate. This is a separately named optimization-profile
+ablation; it is not silently substituted into the 1.4B main experiment.
 
 ```bash
 export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
-export POLICY70_SMOKE=$JOB_ROOT/outputs/reward_overoptimization_smoke_policy_70m
+export POLICY70_SMOKE=$JOB_ROOT/outputs/reward_overoptimization_smoke_policy_70m_lr1e7_l1
 
 sbatch --array=0-2 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,CPDPO_SMOKE_OUTPUT_ROOT="$POLICY70_SMOKE" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,CPDPO_SMOKE_OUTPUT_ROOT="$POLICY70_SMOKE" \
   scripts/slurm/smoke_reward_overoptimization.sbatch
 ```
 
-Then launch the seed-1 full PPO/PairPPO/CPDPO comparison. The prompt schedule,
-proxy RM, geometry/calibration, hyperparameters, and response/update budgets
-are unchanged; only the initial/reference policy capacity changes:
+Only after all three smoke tasks complete, launch seed-1 PPO/PairPPO/CPDPO
+with the exact same declared 70M profile. The prompt schedule, proxy RM,
+geometry/calibration, and response/update budgets remain unchanged. The
+profile-specific root prevents mixing this run with the failed default-profile
+attempt:
 
 ```bash
-export POLICY70_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_policy_70m
+export POLICY70_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_policy_70m_lr1e7_l1
 
 sbatch --array=0-2 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_reward_overoptimization.sbatch
 ```
 
@@ -805,7 +823,7 @@ sbatch \
   scripts/slurm/prepare_cpdpo_v2_references.sbatch
 
 sbatch --array=1 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_cpdpo_v2.sbatch
 
 sbatch \
@@ -813,14 +831,16 @@ sbatch \
   scripts/slurm/prepare_advpo_references.sbatch
 
 sbatch --array=1 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA=1.0,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA=1.0,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_advpo.sbatch
 ```
 
 AdvPO confidence is policy-independent and can be reused only when its proxy
 RM and ridge are unchanged. Every policy run/evaluation records the selected
-variant, architecture dimensions, and policy fingerprint. Aggregation rejects
-mixed 70M/1.4B records.
+variant, architecture dimensions, policy fingerprint, and resolved optimizer
+profile. Aggregation rejects mixed 70M/1.4B records. Training now stops at the
+first non-finite loss or gradient norm instead of advancing through corrupted
+updates.
 
 ### Experiment 2: one-update PPO smoke
 
