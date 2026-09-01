@@ -131,6 +131,8 @@ training.
 - Keep online response/proxy-call/update budgets equal to scalar PPO and record
   reference preparation cost separately.
 - Add separate smoke/full/evaluation jobs and optional four-method plotting.
+- Add one optional two-method Slurm evaluation array for CPDPOv2 and AdvPO;
+  preserve the dedicated evaluation jobs and identical evaluator semantics.
 - Test the reward identity, common-mode sensitivity, cache provenance,
   no-gold access, budget equality, and v1 regression behavior.
 - Canonicalize cached prompts through the same policy-tokenizer decode boundary
@@ -215,3 +217,10 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
   declared dtype into policy-generated CPDPOv2/AdvPO reference caches. Keep
   optimizer-only arguments out of the cache builders and require separate
   CPDPOv2/AdvPO smoke passes before their full 70M runs.
+- Reconstruct evaluation-time TRLX Hydra wrappers with the unfrozen-layer
+  count recorded by each run instead of the historical hardcoded value. Reject
+  inconsistent/out-of-range metadata and retain the old value `2` only for
+  checkpoints created before either provenance field existed.
+- Right-size every offline evaluation launcher to 4 CPUs, 24 GiB host memory,
+  and 3 hours using completed Phoenix MaxRSS/elapsed evidence. Do not infer a
+  corresponding reduction for training or artifact jobs from evaluation data.

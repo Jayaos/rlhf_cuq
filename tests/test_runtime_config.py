@@ -16,6 +16,7 @@ from src.ppo.runtime_config import (
 from src.ppo.policy_variants import (
     DEFAULT_POLICY_VARIANT,
     get_policy_variant,
+    resolve_policy_num_layers_unfrozen,
     validate_policy_checkpoint,
 )
 from src.reward_modeling.training.local_model_compat import apply_local_model_family
@@ -64,6 +65,33 @@ class RuntimeConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "scalar reward-model checkpoint"):
                 validate_policy_checkpoint(reward, "70m")
 
+    def test_evaluator_resolves_recorded_hydra_wrapper_depth(self) -> None:
+        architecture = {"num_hidden_layers": 6}
+        metadata = {
+            "policy_optimization": {"num_layers_unfrozen": 1},
+            "trlx_config": {"model": {"num_layers_unfrozen": 1}},
+        }
+        self.assertEqual(resolve_policy_num_layers_unfrozen(metadata, architecture), 1)
+        self.assertEqual(
+            resolve_policy_num_layers_unfrozen(
+                {"trlx_config": {"model": {"num_layers_unfrozen": 1}}}, architecture
+            ),
+            1,
+        )
+        self.assertEqual(resolve_policy_num_layers_unfrozen({}, architecture), 2)
+        with self.assertRaisesRegex(ValueError, "disagrees"):
+            resolve_policy_num_layers_unfrozen(
+                {
+                    "policy_optimization": {"num_layers_unfrozen": 1},
+                    "trlx_config": {"model": {"num_layers_unfrozen": 2}},
+                },
+                architecture,
+            )
+        with self.assertRaisesRegex(ValueError, "outside"):
+            resolve_policy_num_layers_unfrozen(
+                {"policy_optimization": {"num_layers_unfrozen": 7}}, architecture
+            )
+
     def test_experiment_jobs_thread_named_policy_variant(self) -> None:
         helper = (ROOT / "scripts/configure_policy_variant.sh").read_text(encoding="utf-8")
         self.assertIn('POLICY_VARIANT="${RLHF_POLICY_VARIANT:-1p4b}"', helper)
@@ -82,6 +110,7 @@ class RuntimeConfigTests(unittest.TestCase):
             "prepare_cpdpo_v2_references.sbatch",
             "train_cpdpo_v2.sbatch",
             "evaluate_cpdpo_v2.sbatch",
+            "evaluate_additive_reward_overoptimization.sbatch",
             "smoke_cpdpo_v2.sbatch",
             "prepare_advpo_references.sbatch",
             "train_advpo.sbatch",
@@ -131,6 +160,7 @@ class RuntimeConfigTests(unittest.TestCase):
             "evaluate_cpdpo_v2.sbatch",
             "train_advpo.sbatch",
             "evaluate_advpo.sbatch",
+            "evaluate_additive_reward_overoptimization.sbatch",
         ):
             text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
             self.assertIn("reward_overoptimization_policy_70m", text)
@@ -160,6 +190,36 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertIn('--dtype "$POLICY_PRECISION"', reference_stage)
             self.assertNotIn('"${POLICY_TRAINING_ARGS[@]}"', reference_stage)
             self.assertIn('"${POLICY_TRAINING_ARGS[@]}"', training_stage)
+
+    def test_additive_evaluation_array_maps_methods_and_seeds(self) -> None:
+        job = (
+            ROOT / "scripts/slurm/evaluate_additive_reward_overoptimization.sbatch"
+        ).read_text(encoding="utf-8")
+        self.assertIn("#SBATCH --array=0-5", job)
+        self.assertIn("METHODS=(cpdpo_v2 advpo)", job)
+        self.assertIn("TASK_ID % 2", job)
+        self.assertIn("TASK_ID / 2 + 1", job)
+        self.assertIn('ADVPO_B="${ADVPO_B:-}"', job)
+        self.assertIn("method_run_name(\"cpdpo_v2\"", job)
+        self.assertIn("advpo_run_name", job)
+        self.assertIn("scripts/evaluate_policy_checkpoints.py", job)
+        self.assertIn("PASS additive offline evaluation", job)
+
+    def test_offline_evaluation_jobs_use_accounting_based_resources(self) -> None:
+        for filename in (
+            "evaluate_reward_overoptimization.sbatch",
+            "evaluate_cpdpo_v2.sbatch",
+            "evaluate_advpo.sbatch",
+            "evaluate_additive_reward_overoptimization.sbatch",
+        ):
+            with self.subTest(filename=filename):
+                text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+                self.assertIn("#SBATCH --cpus-per-task=4", text)
+                self.assertIn("#SBATCH --mem=24G", text)
+                self.assertIn("#SBATCH --time=03:00:00", text)
+                self.assertIn('OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"', text)
+                self.assertNotIn("#SBATCH --mem=128G", text)
+                self.assertNotIn("#SBATCH --time=24:00:00", text)
 
     def test_local_rm_family_hint_preserves_path_and_exposes_pythia(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -528,6 +588,7 @@ class RuntimeConfigTests(unittest.TestCase):
             "evaluate_reward_overoptimization.sbatch",
             "train_cpdpo_v2.sbatch",
             "evaluate_cpdpo_v2.sbatch",
+            "evaluate_additive_reward_overoptimization.sbatch",
             "train_advpo.sbatch",
             "evaluate_advpo.sbatch",
             "smoke_reward_overoptimization.sbatch",

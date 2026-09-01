@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Offline gold-isolated evaluation for a named AdvPO B run.
-#   sbatch --array=1 --export=ALL,GOLD_RM_PATH=/path/to/gold,ADVPO_B=1 scripts/slurm/evaluate_advpo.sbatch
+# Gold-isolated evaluation array for the additive CPDPOv2 and AdvPO tracks.
+# Mapping: task 0=CPDPOv2 seed 1, 1=AdvPO seed 1, 2=CPDPOv2 seed 2,
+# 3=AdvPO seed 2, 4=CPDPOv2 seed 3, 5=AdvPO seed 3.
+# For the current seed-1 diagnostic:
+#   sbatch --array=0-1 --export=ALL,GOLD_RM_PATH=/path/to/gold,ADVPO_B=1 \
+#     scripts/slurm/evaluate_additive_reward_overoptimization.sbatch
 
-#SBATCH -J advpo_eval
-#SBATCH --array=1-3
+#SBATCH -J additive_eval
+#SBATCH --array=0-5
 #SBATCH --account=gts-yxie77-paid
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
@@ -11,22 +15,26 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="A100|H100|H200"
 #SBATCH -qinferno
-#SBATCH -o Report-advpo-eval-%A_%a.out
+#SBATCH -o Report-additive-reward-eval-%A_%a.out
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jlee3541@gatech.edu
 
 module load anaconda3
 set -euo pipefail
 : "${GOLD_RM_PATH:?Export the reconstructed AlpacaFarm GOLD_RM_PATH}"
-: "${ADVPO_B:?Export the B value used by the AdvPO run}"
 
-SEED="${SLURM_ARRAY_TASK_ID:?missing seed array task ID}"
+METHODS=(cpdpo_v2 advpo)
+TASK_ID="${SLURM_ARRAY_TASK_ID:?missing array task ID}"
+METHOD="${METHODS[$((TASK_ID % 2))]}"
+SEED="$((TASK_ID / 2 + 1))"
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 EVAL_SPLIT="${CPDPO_EVAL_SPLIT:-D_rl_val_prompts}"
 NUM_PROMPTS="${CPDPO_EVAL_NUM_PROMPTS:-0}"
+CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
+ADVPO_B="${ADVPO_B:-}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: CPDPO_PROXY_BATCH_SIZE must be a positive integer" >&2
@@ -50,8 +58,19 @@ source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export PYTHONNOUSERSITE=1 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 
-RUN_VARIANT="$(python -c 'import sys; from src.advpo.spec import advpo_run_name; print(advpo_run_name(float(sys.argv[1])))' "$ADVPO_B")"
+if [[ "$METHOD" == "cpdpo_v2" ]]; then
+  RUN_VARIANT="$(python -c 'import sys; from src.cpdpo.spec import method_run_name; print(method_run_name("cpdpo_v2", float(sys.argv[1])))' "$CPDPO_ALPHA")"
+  METHOD_DETAIL="alpha=$CPDPO_ALPHA"
+else
+  if [[ -z "$ADVPO_B" ]]; then
+    echo "ERROR: Export ADVPO_B for AdvPO evaluation array tasks" >&2
+    exit 2
+  fi
+  RUN_VARIANT="$(python -c 'import sys; from src.advpo.spec import advpo_run_name; print(advpo_run_name(float(sys.argv[1])))' "$ADVPO_B")"
+  METHOD_DETAIL="B=$ADVPO_B"
+fi
 RUN_DIR="$OUTPUT_ROOT/seed_${SEED}/$RUN_VARIANT"
+
 python scripts/validate_legacy_sources.py
 python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$RUN_DIR/run_metadata.json"
@@ -71,4 +90,4 @@ srun python scripts/evaluate_policy_checkpoints.py \
   --device cuda:0 \
   --dtype bf16
 
-echo "PASS offline evaluation method=advpo seed=$SEED policy=$POLICY_VARIANT split=$EVAL_SPLIT B=$ADVPO_B"
+echo "PASS additive offline evaluation method=$METHOD seed=$SEED policy=$POLICY_VARIANT split=$EVAL_SPLIT $METHOD_DETAIL"

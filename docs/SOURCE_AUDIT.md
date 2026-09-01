@@ -292,6 +292,14 @@ the algebraically scale-restoring ratio
 rollout. This convention is explicit provenance, not an undocumented claim
 about unreleased author code.
 
+CPDPOv2 and AdvPO may share one Slurm evaluation-array launcher because that
+file performs scheduling and run-directory selection only. Each task still
+invokes the unchanged gold-isolated checkpoint evaluator on exactly one named
+method/seed run, writes into that run's separate evaluation directory, and
+retains its method-specific alpha or `B` identity. The combined launcher does
+not combine responses or artifacts across methods, and the dedicated launchers
+remain valid compatibility entry points.
+
 ## Additive matched-capacity proxy-RM authorization
 
 On 2026-08-31 the user authorized a separate proxy-RM capacity experiment that
@@ -381,6 +389,30 @@ launchers use the same policy profile, but their fixed SFT response caches are
 policy- and dtype-dependent and therefore must be regenerated for 70M/FP32.
 Their reference builders receive only the resolved inference dtype; optimizer
 arguments are restricted to the training process.
+
+The first 70M offline-evaluation attempt exposed a wrapper-reconstruction bug:
+training correctly recorded and checkpointed the stabilized profile with one
+unfrozen transformer layer, but `evaluate_policy_checkpoints.py` rebuilt every
+TRLX Hydra policy with a hardcoded two-layer value. The pinned loader therefore
+expected a second `frozen_head.decoder_blocks` entry that cannot exist in the
+valid one-layer checkpoint. Evaluation must reconstruct the wrapper from the
+validated `run_metadata.policy_optimization.num_layers_unfrozen` value (and
+cross-check the legacy TRLX config when present). A fallback of two is allowed
+only for historical runs that predate both metadata fields. This is checkpoint
+loading fidelity and does not change response generation, scoring, or any
+scientific equation.
+
+Phoenix accounting from completed offline evaluations reported peak host RSS
+up to approximately `16,348,600 KiB` (15.6 GiB) and elapsed time up to about
+1 hour 24 minutes after the gold RM was changed to stream shards directly to
+its inference device/dtype. The former 8-CPU/128-GiB/24-hour request is thus
+not evidence-based and unnecessarily restricts scheduling/backfill. Evaluation
+array tasks now request 4 CPUs, 24 GiB host memory, and 3 hours. This retains
+about 50% host-memory headroom and more than 2x the observed wall time while
+leaving GPU type, evaluation prompts, checkpoints, scoring, and outputs
+unchanged. These resource estimates apply to offline evaluation only; they do
+not justify reducing training or artifact-building allocations shared with the
+1.4B path.
 
 Prompt, response, update, checkpoint, and evaluation budgets remain common.
 Training/evaluation metadata must record the named policy variant,

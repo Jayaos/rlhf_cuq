@@ -860,6 +860,25 @@ sbatch --array=1 \
   scripts/slurm/train_advpo.sbatch
 ```
 
+After both additive runs finish, evaluate seed 1 with one two-task array:
+
+```bash
+sbatch --array=0-1 \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,GOLD_RM_PATH="$GOLD_RM_PATH",CPDPO_ALPHA=0.10,ADVPO_B=1,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  scripts/slurm/evaluate_additive_reward_overoptimization.sbatch
+```
+
+Task `0` is CPDPOv2 seed 1 and task `1` is AdvPO seed 1. For three
+reportable seeds, use `--array=0-5`: even task IDs are CPDPOv2, odd task IDs
+are AdvPO, and each adjacent pair shares a seed. The dedicated
+`evaluate_cpdpo_v2.sbatch` and `evaluate_advpo.sbatch` launchers remain valid.
+All offline evaluation launchers request 4 CPUs, 24 GiB host memory, and 3
+hours per task. These values are based on completed Phoenix evaluations (about
+15.6 GiB peak RSS and at most roughly 1 hour 24 minutes observed), rather than
+the obsolete 8-CPU/128-GiB/24-hour allocation. Lower requests can improve
+backfill/resource fit, but do not bypass jobs waiting specifically for
+scheduler priority.
+
 AdvPO confidence is policy-independent and can be reused only when its proxy
 RM and ridge are unchanged. Every policy run/evaluation records the selected
 variant, architecture dimensions, policy fingerprint, and resolved optimizer

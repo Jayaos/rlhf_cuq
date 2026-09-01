@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 DEFAULT_POLICY_VARIANT = "1p4b"
+LEGACY_POLICY_NUM_LAYERS_UNFROZEN = 2
 
 
 @dataclass(frozen=True)
@@ -99,3 +100,47 @@ def validate_policy_checkpoint(path: str | Path, variant: str) -> dict:
         "num_hidden_layers": actual_layers,
         "vocab_size": vocab_size,
     }
+
+
+def resolve_policy_num_layers_unfrozen(run_metadata: dict, policy_architecture: dict) -> int:
+    """Resolve the TRLX Hydra wrapper shape from immutable run provenance.
+
+    New experiment runs record the value directly in ``policy_optimization``.
+    The serialized TRLX config is retained as an independent consistency check
+    and as the source for older runs. Only runs predating both fields use the
+    historical experiment default.
+    """
+
+    optimization = run_metadata.get("policy_optimization")
+    if optimization is not None and not isinstance(optimization, dict):
+        raise ValueError("Run policy_optimization metadata must be an object")
+    recorded = (optimization or {}).get("num_layers_unfrozen")
+
+    trlx_config = run_metadata.get("trlx_config")
+    if trlx_config is not None and not isinstance(trlx_config, dict):
+        raise ValueError("Run trlx_config metadata must be an object")
+    model_config = (trlx_config or {}).get("model")
+    if model_config is not None and not isinstance(model_config, dict):
+        raise ValueError("Run trlx_config.model metadata must be an object")
+    configured = (model_config or {}).get("num_layers_unfrozen")
+
+    if recorded is not None and configured is not None and recorded != configured:
+        raise ValueError(
+            "Run metadata disagrees on policy num_layers_unfrozen: "
+            f"policy_optimization={recorded!r}, trlx_config={configured!r}"
+        )
+    value = recorded if recorded is not None else configured
+    if value is None:
+        value = LEGACY_POLICY_NUM_LAYERS_UNFROZEN
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"Policy num_layers_unfrozen must be an integer; found {value!r}")
+
+    total_layers = policy_architecture.get("num_hidden_layers")
+    if not isinstance(total_layers, int) or isinstance(total_layers, bool) or total_layers < 1:
+        raise ValueError("Validated policy architecture has an invalid num_hidden_layers")
+    if not 0 <= value <= total_layers:
+        raise ValueError(
+            "Policy num_layers_unfrozen is outside the validated architecture: "
+            f"{value} not in [0, {total_layers}]"
+        )
+    return value

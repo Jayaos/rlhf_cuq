@@ -5,9 +5,9 @@
 #SBATCH -J cpdpo_v2_eval
 #SBATCH --array=1-3
 #SBATCH --account=gts-yxie77-paid
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=24G
+#SBATCH --time=03:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="A100|H100|H200"
 #SBATCH -qinferno
@@ -48,7 +48,7 @@ conda activate "$CONDA_ENV_NAME"
 set -u
 source scripts/configure_cluster_storage.sh "$JOB_STORAGE_ROOT"
 export PYTHONNOUSERSITE=1 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 
 RUN_VARIANT="$(python -c 'import sys; from src.cpdpo.spec import method_run_name; print(method_run_name("cpdpo_v2", float(sys.argv[1])))' "$CPDPO_ALPHA")"
 RUN_DIR="$OUTPUT_ROOT/seed_${SEED}/$RUN_VARIANT"

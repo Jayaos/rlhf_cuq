@@ -31,6 +31,7 @@ from src.data_utils.split_manifest import PROMPT_ID_FIELD, load_split_records, v
 from src.ppo.policy_variants import (
     DEFAULT_POLICY_VARIANT,
     POLICY_VARIANTS,
+    resolve_policy_num_layers_unfrozen,
     validate_policy_checkpoint,
 )
 from trlx.utils.modeling import logprobs_of_labels
@@ -87,13 +88,16 @@ def discover_checkpoints(run_dir: Path, initial_policy: Path, updates_per_rollou
     return values
 
 
-def load_policy(path: Path, dtype, device):
+def load_policy(path: Path, dtype, device, *, num_layers_unfrozen: int):
     # trlx checkpoints prefix policy weights with `base_model.` and also carry
     # value/frozen-head state, so they must be loaded through the pinned wrapper.
     # The pinned trlx loader predates pathlib support and accepts only `str` or
     # a transformers model instance at this API boundary.
     model = AutoModelForCausalLMWithHydraValueHead.from_pretrained(
-        str(path), num_layers_unfrozen=2, num_value_layers_unfrozen=0, torch_dtype=dtype
+        str(path),
+        num_layers_unfrozen=num_layers_unfrozen,
+        num_value_layers_unfrozen=0,
+        torch_dtype=dtype,
     )
     return model.eval().requires_grad_(False).to(device)
 
@@ -243,6 +247,9 @@ def main() -> None:  # noqa: C901
     validate_policy_checkpoint(reference_path, recorded_policy_variant)
     if metadata.get("policy_architecture") not in (None, policy_architecture):
         raise ValueError("Initial policy architecture metadata mismatch")
+    policy_num_layers_unfrozen = resolve_policy_num_layers_unfrozen(
+        metadata, policy_architecture
+    )
     expected_policy = metadata["initial_policy_fingerprint"]
     if model_fingerprint(initial) != expected_policy or model_fingerprint(reference_path) != metadata["reference_policy_fingerprint"]:
         raise ValueError("Initial/reference policy fingerprint mismatch")
@@ -323,7 +330,12 @@ def main() -> None:  # noqa: C901
             )
             print(f"PASS resumed persisted responses: {response_file}")
         else:
-            policy = load_policy(checkpoint, dtype, device)
+            policy = load_policy(
+                checkpoint,
+                dtype,
+                device,
+                num_layers_unfrozen=policy_num_layers_unfrozen,
+            )
             generated = generate_and_kl(
                 policy=policy,
                 reference=reference,
