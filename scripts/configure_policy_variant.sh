@@ -25,6 +25,20 @@ export POLICY_VARIANT POLICY_PATH POLICY_OUTPUT_TAG
 # preserves the audited 1.4B settings. They are useful for a separately named
 # 70M stabilization profile after the literal 1.4B profile proved unstable.
 POLICY_TRAINING_ARGS=()
+POLICY_PRECISION="${RLHF_POLICY_PRECISION:-bf16}"
+case "$POLICY_PRECISION" in
+  bf16)
+    POLICY_ACCELERATE_CONFIG="configs/accelerate_config_simple.yaml"
+    ;;
+  fp32)
+    POLICY_ACCELERATE_CONFIG="configs/accelerate_config_fp32.yaml"
+    ;;
+  *)
+    echo "ERROR: RLHF_POLICY_PRECISION must be exactly 'bf16' or 'fp32'; found '$POLICY_PRECISION'" >&2
+    return 2 2>/dev/null || exit 2
+    ;;
+esac
+POLICY_TRAINING_ARGS+=(--training-precision "$POLICY_PRECISION")
 if [[ -n "${RLHF_POLICY_LEARNING_RATE:-}" ]]; then
   POLICY_TRAINING_ARGS+=(--optimizer-learning-rate "$RLHF_POLICY_LEARNING_RATE")
 fi
@@ -34,3 +48,4 @@ fi
 if [[ -n "${RLHF_POLICY_MAX_GRAD_NORM:-}" ]]; then
   POLICY_TRAINING_ARGS+=(--max-grad-norm "$RLHF_POLICY_MAX_GRAD_NORM")
 fi
+export POLICY_PRECISION POLICY_ACCELERATE_CONFIG

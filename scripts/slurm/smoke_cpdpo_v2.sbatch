@@ -92,7 +92,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --dtype bf16 \
   "${ALLOW_ARGS[@]}"
 
-srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
+srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   src/ppo/trainer_reward_overoptimization.py \
   --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 \
   --method cpdpo_v2 \

@@ -40,10 +40,11 @@ Gold reward cannot be used to select alpha.
 - Predeclared CPDPO alpha sensitivity values, provided they are reported as
   ablations and never selected using gold reward.
 - A separately named 70M policy stabilization profile. Its learning rate,
-  number of unfrozen transformer layers, and gradient-norm limit must be
-  declared before launch, shared by all methods in that comparison, and
-  reported. The failed literal transfer of the 1.4B profile is not a valid
-  completed experiment, and gold reward cannot be used to choose the profile.
+  number of unfrozen transformer layers, gradient-norm limit, and training
+  precision must be declared before launch, shared by all methods in that
+  comparison, and reported. The failed literal transfer of the 1.4B profile
+  and the failed conservative BF16 smoke are not valid completed experiments,
+  and gold reward cannot be used to choose the profile.
 
 ## Out of scope for v1
 

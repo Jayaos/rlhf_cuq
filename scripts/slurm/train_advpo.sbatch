@@ -80,7 +80,7 @@ if [[ -n "${ADVPO_RESUME_CHECKPOINT:-}" ]]; then
   EXTRA_ARGS+=(--resume-from-checkpoint "$ADVPO_RESUME_CHECKPOINT")
 fi
 
-srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
+srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   src/ppo/trainer_reward_overoptimization.py \
   --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 \
   --method advpo \

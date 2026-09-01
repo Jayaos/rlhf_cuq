@@ -362,6 +362,17 @@ output root. It is a named optimization-profile ablation rather than a
 model-size-only comparison. Non-finite losses or gradient norms are fatal; the
 trainer may not continue producing corrupted checkpoints.
 
+A 2026-09-01 one-rollout smoke then tested the conservative `1e-7`/one-layer
+profile under the inherited BF16 launcher. Its finite-loss guard passed, but
+the gradient norm was already non-finite before optimizer step one; no policy
+weight had been updated. This rules out learning-rate magnitude as the cause
+of that smoke failure and localizes the failure to the mixed-precision
+forward/backward path. The small-policy launcher therefore also exposes and
+records training precision. The next integration gate uses full FP32 policy
+training, which is computationally practical for 70M, while retaining BF16 as
+the untouched 1.4B/default path. All methods in a 70M comparison must share
+the same precision profile.
+
 Prompt, response, update, checkpoint, and evaluation budgets remain common.
 Training/evaluation metadata must record the named policy variant,
 architecture dimensions, model fingerprint, and resolved optimization

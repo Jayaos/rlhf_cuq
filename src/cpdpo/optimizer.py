@@ -30,3 +30,17 @@ def install_gradient_clipping(trainer, max_grad_norm: float) -> None:
 
     trainer.last_gradient_norm = 0.0
     trainer.opt.step = MethodType(clipped_step, trainer.opt)
+
+
+def validate_training_precision(trainer, expected: str) -> None:
+    """Reject a launcher whose mixed precision disagrees with run metadata."""
+
+    actual = str(trainer.accelerator.mixed_precision).lower()
+    normalized_actual = "fp32" if actual in {"no", "none", "fp32"} else actual
+    if expected not in {"bf16", "fp32"}:
+        raise ValueError(f"Unsupported declared training precision: {expected!r}")
+    if normalized_actual != expected:
+        raise RuntimeError(
+            "Accelerate precision mismatch: "
+            f"run declares {expected}, launcher resolved {normalized_actual}"
+        )

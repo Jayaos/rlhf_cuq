@@ -19,6 +19,7 @@ from src.ppo.policy_variants import (
     validate_policy_checkpoint,
 )
 from src.reward_modeling.training.local_model_compat import apply_local_model_family
+from src.cpdpo.optimizer import validate_training_precision
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +72,8 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("RLHF_POLICY_LEARNING_RATE", helper)
         self.assertIn("RLHF_POLICY_NUM_LAYERS_UNFROZEN", helper)
         self.assertIn("RLHF_POLICY_MAX_GRAD_NORM", helper)
+        self.assertIn("RLHF_POLICY_PRECISION", helper)
+        self.assertIn("POLICY_ACCELERATE_CONFIG", helper)
 
         jobs = (
             "train_reward_overoptimization.sbatch",
@@ -102,11 +105,24 @@ class RuntimeConfigTests(unittest.TestCase):
         ):
             text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
             self.assertIn('"${POLICY_TRAINING_ARGS[@]}"', text)
+            self.assertIn('"$POLICY_ACCELERATE_CONFIG"', text)
 
         trainer = (ROOT / "src/ppo/trainer_reward_overoptimization.py").read_text(encoding="utf-8")
         self.assertIn("--optimizer-learning-rate", trainer)
         self.assertIn("--num-layers-unfrozen", trainer)
+        self.assertIn("--training-precision", trainer)
         self.assertIn('"policy_optimization"', trainer)
+
+        fp32 = (ROOT / "configs/accelerate_config_fp32.yaml").read_text(encoding="utf-8")
+        self.assertIn('mixed_precision: "no"', fp32)
+
+    def test_declared_training_precision_must_match_accelerate(self) -> None:
+        trainer = SimpleNamespace(accelerator=SimpleNamespace(mixed_precision="no"))
+        validate_training_precision(trainer, "fp32")
+        trainer.accelerator.mixed_precision = "bf16"
+        validate_training_precision(trainer, "bf16")
+        with self.assertRaisesRegex(RuntimeError, "precision mismatch"):
+            validate_training_precision(trainer, "fp32")
 
         for filename in (
             "train_reward_overoptimization.sbatch",

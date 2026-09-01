@@ -18,7 +18,7 @@ from src.cpdpo.pair_loss import pairwise_clipped_loss
 from src.cpdpo.experiment_checkpoint import ExperimentCheckpointMixin
 from src.cpdpo.pair_reward import PairRewardCallback
 from src.cpdpo.random_stream import GenerationSeedStream
-from src.cpdpo.optimizer import install_gradient_clipping
+from src.cpdpo.optimizer import install_gradient_clipping, validate_training_precision
 from src.cpdpo.run_logging import append_rollout_record
 from src.cpdpo.rollout_store import PairRolloutBatch, PairRolloutElement, PairRolloutStorage
 from src.cpdpo.spec import CPDPOConfig
@@ -62,6 +62,9 @@ class CustomAcceleratePairPPOTrainer(ExperimentCheckpointMixin, CustomAccelerate
         )
         self.evaluation_seed_stream = GenerationSeedStream(
             int(self.experiment_seeds["evaluation_generation"]), self.accelerator.device
+        )
+        validate_training_precision(
+            self, experiment_context["policy_optimization"]["training_precision"]
         )
         install_gradient_clipping(self, max_grad_norm)
         self.configure_experiment_checkpointing(

@@ -9,7 +9,7 @@ from trlx.utils import infinite_dataloader
 from src.ppo.custom_trlx_trainers.custom_accelerate_ppo_trainer import CustomAcceleratePPOTrainer
 from src.cpdpo.random_stream import GenerationSeedStream
 from src.cpdpo.experiment_checkpoint import ExperimentCheckpointMixin
-from src.cpdpo.optimizer import install_gradient_clipping
+from src.cpdpo.optimizer import install_gradient_clipping, validate_training_precision
 from src.cpdpo.run_logging import append_rollout_record
 
 
@@ -34,6 +34,9 @@ class ExperimentAcceleratePPOTrainer(ExperimentCheckpointMixin, CustomAccelerate
         )
         self.evaluation_seed_stream = GenerationSeedStream(
             int(self.experiment_seeds["evaluation_generation"]), self.accelerator.device
+        )
+        validate_training_precision(
+            self, experiment_context["policy_optimization"]["training_precision"]
         )
         install_gradient_clipping(self, max_grad_norm)
         self.configure_experiment_checkpointing(

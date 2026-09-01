@@ -420,11 +420,15 @@ hidden size), record it in run/checkpoint/evaluation provenance, and isolate
 70M outputs from 1.4B outputs. Preserve the existing 1.4B optimizer profile by
 default. The literal transfer of that profile to 70M diverged during the first
 Phoenix PPO rollout, so any 70M stabilization profile must explicitly declare
-and record its learning rate, unfrozen-layer count, and gradient-norm limit,
+and record its learning rate, unfrozen-layer count, gradient-norm limit, and
+training precision,
 use a new output root, and apply the same profile to every compared method.
 This is an optimization-profile ablation, not a model-size-only comparison.
 Fair prompt/response/update budgets remain mandatory, and non-finite losses or
 gradients must fail before an optimizer step or checkpoint is accepted.
+The conservative BF16 70M smoke also produced a non-finite gradient norm
+before optimizer step one. Full FP32 is therefore the next required 70M smoke
+gate; BF16 remains the unchanged 1.4B/default precision.
 
 CPDPO geometry/calibration and AdvPO confidence do not consume the policy and
 may be reused only when their own proxy/data/code fingerprints validate.

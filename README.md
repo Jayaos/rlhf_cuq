@@ -765,18 +765,21 @@ The launch path accepts three explicit, recorded overrides:
 | `RLHF_POLICY_LEARNING_RATE` | `--optimizer-learning-rate` | `1e-6` |
 | `RLHF_POLICY_NUM_LAYERS_UNFROZEN` | `--num-layers-unfrozen` | `2` |
 | `RLHF_POLICY_MAX_GRAD_NORM` | `--max-grad-norm` | `1.0` |
+| `RLHF_POLICY_PRECISION` | `--training-precision` | `bf16` |
 
-Start with the conservative 70M stabilization smoke below. It uses one top
-layer (the closest integer match to the 1.4B trainable-layer fraction) and a
-constant `1e-7` learning rate. This is a separately named optimization-profile
-ablation; it is not silently substituted into the 1.4B main experiment.
+The first conservative `1e-7`/one-layer smoke still produced a non-finite
+gradient norm before optimizer step one, proving that optimizer step size was
+not the cause. Start with the full-FP32 70M smoke below. The model is small
+enough for this precision on one supported GPU. This is a separately named
+optimization-profile ablation; it is not silently substituted into the 1.4B
+main experiment.
 
 ```bash
 export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
-export POLICY70_SMOKE=$JOB_ROOT/outputs/reward_overoptimization_smoke_policy_70m_lr1e7_l1
+export POLICY70_SMOKE=$JOB_ROOT/outputs/reward_overoptimization_smoke_policy_70m_fp32_lr1e7_l1
 
 sbatch --array=0-2 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,CPDPO_SMOKE_OUTPUT_ROOT="$POLICY70_SMOKE" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,CPDPO_SMOKE_OUTPUT_ROOT="$POLICY70_SMOKE" \
   scripts/slurm/smoke_reward_overoptimization.sbatch
 ```
 
@@ -787,10 +790,10 @@ profile-specific root prevents mixing this run with the failed default-profile
 attempt:
 
 ```bash
-export POLICY70_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_policy_70m_lr1e7_l1
+export POLICY70_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_policy_70m_fp32_lr1e7_l1
 
 sbatch --array=0-2 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_reward_overoptimization.sbatch
 ```
 
@@ -823,7 +826,7 @@ sbatch \
   scripts/slurm/prepare_cpdpo_v2_references.sbatch
 
 sbatch --array=1 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_cpdpo_v2.sbatch
 
 sbatch \
@@ -831,7 +834,7 @@ sbatch \
   scripts/slurm/prepare_advpo_references.sbatch
 
 sbatch --array=1 \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA=1.0,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA=1.0,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
   scripts/slurm/train_advpo.sbatch
 ```
 

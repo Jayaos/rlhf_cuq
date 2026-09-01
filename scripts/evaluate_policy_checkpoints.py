@@ -425,6 +425,9 @@ def main() -> None:  # noqa: C901
                     "num_layers_unfrozen"
                 ),
                 "policy_max_grad_norm": (metadata.get("policy_optimization") or {}).get("max_grad_norm"),
+                "policy_training_precision": (metadata.get("policy_optimization") or {}).get(
+                    "training_precision"
+                ),
                 "cpdpo_alpha": cpdpo_alpha,
                 "advpo_B": metadata.get("advpo_B"),
                 "seed": metadata["base_seed"],

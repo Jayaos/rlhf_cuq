@@ -93,7 +93,7 @@ srun python scripts/prepare_advpo_references.py \
   --device cuda:0 \
   --dtype bf16
 
-srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
+srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   src/ppo/trainer_reward_overoptimization.py \
   --configs defaults defaults_rlhf pythia_rlhf_individual prompt_disjoint_data_split_v1 \
   --method advpo \

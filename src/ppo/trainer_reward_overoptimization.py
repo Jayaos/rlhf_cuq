@@ -102,6 +102,12 @@ def parse_args() -> argparse.Namespace:
         help="Policy gradient-norm limit applied immediately before every optimizer step",
     )
     parser.add_argument(
+        "--training-precision",
+        choices=("bf16", "fp32"),
+        default="bf16",
+        help="Declared Accelerate policy-training precision; checked again inside the trainer",
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         default=ALPHA,
@@ -437,6 +443,7 @@ def main() -> None:  # noqa: C901
             "scheduler_eta_min": float(trlx_config.scheduler.kwargs["eta_min"]),
             "num_layers_unfrozen": int(trlx_config.model.num_layers_unfrozen),
             "max_grad_norm": float(args.max_grad_norm),
+            "training_precision": args.training_precision,
         },
         "initial_policy_fingerprint": initial_policy_fingerprint,
         "reference_policy_fingerprint": initial_policy_fingerprint,

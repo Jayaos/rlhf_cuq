@@ -207,3 +207,7 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
   diverged on the first real 70M PPO rollout. Keep the 1.4B/default profile
   unchanged, require a distinct output root for overrides, and fail at the
   first non-finite loss or gradient rather than advancing a corrupted run.
+- Add a declared FP32 70M launcher after the conservative BF16 smoke produced
+  a non-finite gradient norm before optimizer step one. Validate the declared
+  precision against Accelerate at runtime and apply it uniformly to every
+  compared method; retain BF16 as the unchanged 1.4B default.

@@ -1,0 +1,17 @@
+# Single-process full-FP32 launcher for the explicitly named 70M policy
+# stabilization track. The audited 1.4B/default path remains BF16.
+
+compute_environment: LOCAL_MACHINE
+distributed_type: no
+downcast_bf16: no
+dynamo_config: {}
+fsdp_config: {}
+machine_rank: 0
+main_training_function: main
+megatron_lm_config: {}
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+use_cpu: false
+mixed_precision: "no"
