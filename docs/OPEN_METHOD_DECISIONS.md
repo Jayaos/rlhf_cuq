@@ -109,3 +109,19 @@ not freeze that value for a scientific run.
   artifacts, policy runs, evaluations, and plots;
 - no mixing of 44M and 1.4B proxy checkpoints within a comparison and no gold
   access during RM or policy training.
+
+## Frozen for the policy-capacity ablation
+
+- named policy variants are exactly `1p4b` (default) and `70m`;
+- `1p4b` resolves to the full causal LM in `assets/initial_sft_policy`;
+- `70m` resolves to the full causal LM in `assets/proxy_rm_sft_base`;
+- the scalar-head 44M proxy-RM checkpoint is never accepted as a policy;
+- the selected checkpoint initializes the trainable policy and the identical
+  frozen KL reference for every compared method;
+- the existing two-unfrozen-layer setting and all scientific budgets remain
+  unchanged across policy variants;
+- 70M run outputs and all policy-generated fixed-reference caches have
+  capacity-specific paths and may not be combined with 1.4B records;
+- CPDPO geometry/calibration and AdvPO confidence remain policy-independent and
+  may be reused only when their proxy/data/code fingerprints validate;
+- gold remains offline evaluation-only for both policy capacities.

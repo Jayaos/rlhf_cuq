@@ -291,6 +291,14 @@ class CPDPOExperimentContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ModuleNotFoundError, "matplotlib==3.7.2"):
                 module.require_plotting_dependency()
 
+        for record in records:
+            record["_policy_variant"] = "70m"
+        small_policy = module.aggregate(records, minimum_seeds=1)
+        self.assertTrue(all(row["policy_variant"] == "70m" for row in small_policy))
+        records[0]["_policy_variant"] = "1p4b"
+        with self.assertRaisesRegex(ValueError, "one policy variant"):
+            module.aggregate(records, minimum_seeds=1)
+
     def test_alpha_plot_selection_reuses_controls_and_selects_named_cpdpo_run(self) -> None:
         module_path = ROOT / "scripts/aggregate_and_plot_reward_overoptimization.py"
         spec = importlib.util.spec_from_file_location("cpdpo_alpha_plot_script", module_path)

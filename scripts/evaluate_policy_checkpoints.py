@@ -28,6 +28,11 @@ from src.cpdpo.evaluation import (
 from src.cpdpo.reward_features import load_proxy_feature_scorer
 from src.cpdpo.run_logging import load_rollout_records
 from src.data_utils.split_manifest import PROMPT_ID_FIELD, load_split_records, verify_split_manifest
+from src.ppo.policy_variants import (
+    DEFAULT_POLICY_VARIANT,
+    POLICY_VARIANTS,
+    validate_policy_checkpoint,
+)
 from trlx.utils.modeling import logprobs_of_labels
 from trlx.models.modeling_ppo import AutoModelForCausalLMWithHydraValueHead
 
@@ -37,6 +42,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--initial-policy", required=True)
     parser.add_argument("--reference-policy", required=True)
+    parser.add_argument("--policy-variant", choices=tuple(POLICY_VARIANTS))
     parser.add_argument("--proxy-rm", required=True)
     parser.add_argument("--gold-rm", required=True)
     parser.add_argument("--manifest", required=True)
@@ -227,6 +233,16 @@ def main() -> None:  # noqa: C901
     device = torch.device(args.device)
     initial = Path(args.initial_policy).resolve()
     reference_path = Path(args.reference_policy).resolve()
+    recorded_policy_variant = metadata.get("policy_variant", DEFAULT_POLICY_VARIANT)
+    if args.policy_variant is not None and args.policy_variant != recorded_policy_variant:
+        raise ValueError(
+            f"Requested policy variant {args.policy_variant}, but the run records "
+            f"{recorded_policy_variant}"
+        )
+    policy_architecture = validate_policy_checkpoint(initial, recorded_policy_variant)
+    validate_policy_checkpoint(reference_path, recorded_policy_variant)
+    if metadata.get("policy_architecture") not in (None, policy_architecture):
+        raise ValueError("Initial policy architecture metadata mismatch")
     expected_policy = metadata["initial_policy_fingerprint"]
     if model_fingerprint(initial) != expected_policy or model_fingerprint(reference_path) != metadata["reference_policy_fingerprint"]:
         raise ValueError("Initial/reference policy fingerprint mismatch")
@@ -251,6 +267,10 @@ def main() -> None:  # noqa: C901
             "pair_artifacts": metadata["pair_artifacts"],
             "code_revision": metadata["code_revision"],
         }
+        if "policy_variant" in metadata:
+            expected["policy_variant"] = metadata["policy_variant"]
+        if "policy_architecture" in metadata:
+            expected["policy_architecture"] = metadata["policy_architecture"]
         if "reference_anchor" in metadata:
             expected["reference_anchor"] = metadata["reference_anchor"]
         if "advpo" in metadata:
@@ -393,6 +413,8 @@ def main() -> None:  # noqa: C901
                 "method": metadata["method"],
                 "run_variant": run_variant,
                 "experiment_track": metadata.get("experiment_track", "main"),
+                "policy_variant": recorded_policy_variant,
+                "policy_architecture": policy_architecture,
                 "cpdpo_alpha": cpdpo_alpha,
                 "advpo_B": metadata.get("advpo_B"),
                 "seed": metadata["base_seed"],

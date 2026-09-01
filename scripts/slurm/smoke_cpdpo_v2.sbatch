@@ -21,11 +21,8 @@ set -euo pipefail
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${CPDPO_SMOKE_SCHEDULE:-artifacts/prompt_schedules/smoke_seed_1.jsonl}"
-OUTPUT_ROOT="${CPDPO_V2_SMOKE_OUTPUT_ROOT:-$JOB_STORAGE_ROOT/outputs/reward_overoptimization_v2_smoke}"
-REFERENCE_DIR="${CPDPO_V2_SMOKE_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/seed_1}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
@@ -34,6 +31,21 @@ if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
+if [[ -n "${CPDPO_V2_SMOKE_OUTPUT_ROOT:-}" ]]; then
+  OUTPUT_ROOT="$CPDPO_V2_SMOKE_OUTPUT_ROOT"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/reward_overoptimization_v2_smoke_policy_70m"
+else
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/reward_overoptimization_v2_smoke"
+fi
+if [[ -n "${CPDPO_V2_SMOKE_REFERENCE_DIR:-}" ]]; then
+  REFERENCE_DIR="$CPDPO_V2_SMOKE_REFERENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/policy_70m/seed_1"
+else
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/seed_1"
+fi
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -57,6 +69,7 @@ fi
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -d "$POLICY_PATH"
 test -d "$PROXY_RM_PATH"
@@ -65,6 +78,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --prompt-schedule "$SCHEDULE" \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \
@@ -90,6 +104,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \
@@ -102,4 +117,4 @@ RUN_VARIANT="$(python -c 'import sys; from src.cpdpo.spec import method_run_name
 test -f "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/run_metadata.json"
 test -f "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/rollout_metrics.jsonl"
 test -d "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/model"
-echo "PASS CPDPOv2 end-to-end smoke alpha=$CPDPO_ALPHA"
+echo "PASS CPDPOv2 end-to-end smoke policy=$POLICY_VARIANT alpha=$CPDPO_ALPHA"

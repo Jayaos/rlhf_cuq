@@ -22,7 +22,6 @@ PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not s
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 SEED="${CPDPO_V2_SEED:-1}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${CPDPO_V2_SCHEDULE:-artifacts/prompt_schedules/seed_${SEED}.jsonl}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
@@ -34,6 +33,7 @@ if [[ ! "$GENERATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -52,6 +52,10 @@ else
 fi
 if [[ -n "${CPDPO_V2_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$CPDPO_V2_REFERENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" && "$ALPHA_TAG" == "0p1" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}_alpha_${ALPHA_TAG}"
 elif [[ "$ALPHA_TAG" == "0p1" ]]; then
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/seed_${SEED}"
 else
@@ -60,6 +64,7 @@ fi
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -d "$POLICY_PATH"
 test -d "$PROXY_RM_PATH"
@@ -70,6 +75,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --prompt-schedule "$SCHEDULE" \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \
@@ -81,4 +87,4 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --device cuda:0 \
   --dtype bf16
 
-echo "PASS CPDPOv2 reference preparation seed=$SEED alpha=$CPDPO_ALPHA path=$REFERENCE_DIR"
+echo "PASS CPDPOv2 reference preparation seed=$SEED policy=$POLICY_VARIANT alpha=$CPDPO_ALPHA path=$REFERENCE_DIR"

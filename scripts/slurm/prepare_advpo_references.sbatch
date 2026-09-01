@@ -21,10 +21,8 @@ PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not s
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
 SEED="${ADVPO_SEED:-1}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${ADVPO_SCHEDULE:-artifacts/prompt_schedules/seed_${SEED}.jsonl}"
-REFERENCE_DIR="${ADVPO_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo/references/seed_${SEED}}"
 GENERATION_BATCH_SIZE="${ADVPO_GENERATION_BATCH_SIZE:-16}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$GENERATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
@@ -33,6 +31,14 @@ if [[ ! "$GENERATION_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
+if [[ -n "${ADVPO_REFERENCE_DIR:-}" ]]; then
+  REFERENCE_DIR="$ADVPO_REFERENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/policy_70m/seed_${SEED}"
+else
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/seed_${SEED}"
+fi
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -43,6 +49,7 @@ export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -d "$POLICY_PATH"
 test -d "$PROXY_RM_PATH"
@@ -51,6 +58,7 @@ srun python scripts/prepare_advpo_references.py \
   --prompt-schedule "$SCHEDULE" \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$REFERENCE_DIR" \
   --base-seed "$SEED" \
@@ -59,4 +67,4 @@ srun python scripts/prepare_advpo_references.py \
   --device cuda:0 \
   --dtype bf16
 
-echo "PASS AdvPO references seed=$SEED path=$REFERENCE_DIR"
+echo "PASS AdvPO references seed=$SEED policy=$POLICY_VARIANT path=$REFERENCE_DIR"

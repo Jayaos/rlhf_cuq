@@ -34,6 +34,11 @@ from src.cpdpo.reference_anchor import (
     REFERENCE_PROMPT_CANONICALIZATION,
 )
 from src.cpdpo.spec import ALPHA, CPDPOConfig, is_main_alpha
+from src.ppo.policy_variants import (
+    DEFAULT_POLICY_VARIANT,
+    POLICY_VARIANTS,
+    validate_policy_checkpoint,
+)
 
 
 GENERATION_SETTINGS = {
@@ -50,6 +55,9 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--prompt-schedule", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--policy-model", required=True)
+    parser.add_argument(
+        "--policy-variant", choices=tuple(POLICY_VARIANTS), default=DEFAULT_POLICY_VARIANT
+    )
     parser.add_argument("--proxy-rm", required=True)
     parser.add_argument("--geometry", required=True)
     parser.add_argument("--calibration", required=True)
@@ -172,6 +180,7 @@ def main() -> None:
     schedule = Path(args.prompt_schedule).resolve()
     manifest = Path(args.manifest).resolve()
     policy_path = Path(args.policy_model).resolve()
+    policy_architecture = validate_policy_checkpoint(policy_path, args.policy_variant)
     output = Path(args.output_dir).resolve()
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"Refusing to overwrite nonempty reference cache directory: {output}")
@@ -262,6 +271,8 @@ def main() -> None:
         "reference_responses_fingerprint": sha256_file(response_path),
         "reference_cache_fingerprint": sha256_file(cache_path),
         "reference_policy_path": str(policy_path),
+        "policy_variant": args.policy_variant,
+        "policy_architecture": policy_architecture,
         "reference_policy_fingerprint": model_fingerprint(policy_path),
         "reference_policy_tokenizer_fingerprint": tokenizer_fingerprint(policy_path),
         "proxy_rm_path": artifact_loader.proxy_rm_path,

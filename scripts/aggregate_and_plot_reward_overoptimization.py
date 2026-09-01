@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 from src.cpdpo.experiment import validate_policy_quality_record
 from src.cpdpo.spec import ALPHA, ALL_METHODS, alpha_tag, is_main_alpha, method_run_name
 from src.advpo.spec import advpo_run_name, number_tag
+from src.ppo.policy_variants import DEFAULT_POLICY_VARIANT, POLICY_VARIANTS
 
 
 def require_plotting_dependency() -> None:
@@ -45,6 +46,7 @@ def load_records(
     include_cpdpo_v2: bool = False,
     include_advpo: bool = False,
     advpo_B: float | None = None,
+    policy_variant: str | None = None,
 ) -> list[dict]:
     records = []
     run_names = {
@@ -67,6 +69,12 @@ def load_records(
     for path in paths:
         run_metadata = json.loads((path.parents[2] / "run_metadata.json").read_text(encoding="utf-8"))
         method = run_metadata["method"]
+        recorded_policy_variant = run_metadata.get("policy_variant", DEFAULT_POLICY_VARIANT)
+        if policy_variant is not None and recorded_policy_variant != policy_variant:
+            raise ValueError(
+                f"Requested policy variant {policy_variant}, but {path.parents[2]} records "
+                f"{recorded_policy_variant}"
+            )
         if path.parents[2].name != run_names.get(method):
             raise ValueError(f"Unexpected run directory for {method}: {path.parents[2]}")
         recorded_alpha = run_metadata.get("cpdpo_alpha")
@@ -92,6 +100,7 @@ def load_records(
                     record["_prompt_id_sequence_sha256"] = run_metadata["prompt_id_sequence_sha256"]
                     record["_cpdpo_alpha"] = recorded_alpha if method in {"cpdpo", "cpdpo_v2"} else None
                     record["_advpo_B"] = run_metadata.get("advpo_B") if method == "advpo" else None
+                    record["_policy_variant"] = recorded_policy_variant
                     records.append(record)
     if not records:
         raise FileNotFoundError(f"No checkpoint metrics found under {root}")
@@ -150,6 +159,9 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
         values = {record[field] for record in records}
         if len(values) != 1:
             raise ValueError(f"Runs do not share one {field}: {sorted(values)}")
+    policy_variants = {record.get("_policy_variant", DEFAULT_POLICY_VARIANT) for record in records}
+    if len(policy_variants) != 1:
+        raise ValueError(f"Runs do not share one policy variant: {sorted(policy_variants)}")
     for record in records:
         if int(record["rollout_step"]) == 0 and (
             record["policy_checkpoint_fingerprint"] != record["initial_policy_fingerprint"]
@@ -181,6 +193,7 @@ def aggregate(records: list[dict], *, minimum_seeds: int = 3) -> list[dict]:
             "method": method,
             "rollout_step": step,
             "n_seeds": len(rows),
+            "policy_variant": next(iter({row.get("_policy_variant", DEFAULT_POLICY_VARIANT) for row in rows})),
             "cpdpo_alpha": next(iter(alpha_values)),
             "advpo_B": next(iter(advpo_values)),
         }
@@ -291,6 +304,11 @@ def plot(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", default="outputs/reward_overoptimization")
+    parser.add_argument(
+        "--policy-variant",
+        choices=tuple(POLICY_VARIANTS),
+        help="Require all selected runs to use this initial/reference policy capacity",
+    )
     parser.add_argument("--split", choices=["D_rl_val_prompts", "D_rl_test_prompts"], default="D_rl_val_prompts")
     parser.add_argument(
         "--cpdpo-alpha",
@@ -334,6 +352,7 @@ def main() -> None:
         include_cpdpo_v2=args.include_cpdpo_v2,
         include_advpo=args.include_advpo,
         advpo_B=args.advpo_B,
+        policy_variant=args.policy_variant,
     )
     result_root = (
         root
@@ -372,6 +391,7 @@ def main() -> None:
                 f"Single-seed diagnostic (seed {args.diagnostic_seed}; no uncertainty band"
                 + ("; includes exploratory CPDPOv2" if args.include_cpdpo_v2 else "")
                 + (f"; includes AdvPO B={args.advpo_B:g}" if args.include_advpo else "")
+                + (f"; policy={args.policy_variant}" if args.policy_variant else "")
                 + ")"
                 if is_main_alpha(args.cpdpo_alpha)
                 else (

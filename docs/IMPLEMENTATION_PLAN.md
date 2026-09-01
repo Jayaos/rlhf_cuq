@@ -183,3 +183,22 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
   existing fingerprinted pipeline.
 - Add a real one-GPU 1.4B RM smoke, static launch/config tests, and a runbook
   that requires fresh capacity-specific artifacts and outputs for all methods.
+
+## 12. Add selectable 70M/1.4B policy capacity — implemented locally; cluster smoke pending
+
+- Preserve `assets/initial_sft_policy` and all existing output locations as the
+  default `1p4b` policy track.
+- Add a named `70m` option that uses the complete causal-LM checkpoint at
+  `assets/proxy_rm_sft_base` for both initialization and the frozen KL
+  reference; never treat the scalar 44M RM checkpoint as a generator.
+- Validate the declared option against the local GPT-NeoX causal-LM
+  architecture before model loading and record the variant/dimensions in run,
+  checkpoint, and evaluation provenance.
+- Use distinct 70M policy output roots and rebuild policy-generated CPDPOv2 and
+  AdvPO reference caches. Reuse policy-independent CPDPO/AdvPO geometry only
+  when its existing proxy/data/code fingerprint validation succeeds.
+- Thread the option through main/smoke training, offline evaluation, additive
+  methods, and plotting while retaining raw path overrides as an advanced,
+  architecture-validated escape hatch.
+- Add dependency-free unit/static tests and exact cluster commands for both
+  policy variants.

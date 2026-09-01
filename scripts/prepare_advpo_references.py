@@ -35,6 +35,11 @@ from src.cpdpo.artifacts import (
 )
 from src.cpdpo.reward_features import load_proxy_feature_scorer
 from src.data_utils.split_manifest import verify_split_manifest
+from src.ppo.policy_variants import (
+    DEFAULT_POLICY_VARIANT,
+    POLICY_VARIANTS,
+    validate_policy_checkpoint,
+)
 
 
 def arguments() -> argparse.Namespace:
@@ -42,6 +47,9 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--prompt-schedule", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--policy-model", required=True)
+    parser.add_argument(
+        "--policy-variant", choices=tuple(POLICY_VARIANTS), default=DEFAULT_POLICY_VARIANT
+    )
     parser.add_argument("--proxy-rm", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--base-seed", type=int, required=True)
@@ -99,6 +107,7 @@ def main() -> None:  # noqa: C901
     schedule = Path(args.prompt_schedule).resolve()
     manifest = Path(args.manifest).resolve()
     policy_path = Path(args.policy_model).resolve()
+    policy_architecture = validate_policy_checkpoint(policy_path, args.policy_variant)
     proxy_path = Path(args.proxy_rm).resolve()
     output = Path(args.output_dir).resolve()
     if output.exists() and any(output.iterdir()):
@@ -231,6 +240,8 @@ def main() -> None:  # noqa: C901
         "reference_responses_fingerprint": sha256_file(responses_path),
         "reference_cache_fingerprint": sha256_file(cache_path),
         "reference_policy_path": str(policy_path),
+        "policy_variant": args.policy_variant,
+        "policy_architecture": policy_architecture,
         "reference_policy_fingerprint": model_fingerprint(policy_path),
         "reference_policy_tokenizer_fingerprint": tokenizer_fingerprint(policy_path),
         "proxy_rm_path": str(proxy_path),

@@ -319,3 +319,41 @@ any additive comparator in that capacity track must all use the same frozen
 1.4B proxy. Reusing 44M-derived artifacts or comparing a 1.4B-proxy treatment
 against a 44M-proxy control is invalid. Gold reward remains evaluation-only
 and is not used to train or select the 1.4B proxy.
+
+## Additive 70M policy-capacity authorization
+
+On 2026-08-31 the user authorized a second initial/reference policy option
+using the already pinned `tlc4418/pythia_70m_sft` asset. This is a named policy
+capacity ablation; the existing 1.4B policy remains the default and the frozen
+v1 scientific equations and data roles do not change.
+
+Pythia's current 70M name counts the input embedding and output unembedding
+matrices. The effective 44M reward model is not a 44M causal policy: the
+Open-Assistant conversion retains the input embedding and transformer, removes
+the vocabulary-sized causal-LM output projection, and adds a scalar reward
+head. Consequently, the trained 44M reward checkpoint cannot generate. The
+70M policy option must load the untouched full causal-LM SFT checkpoint at
+`assets/proxy_rm_sft_base`, including its token-output head.
+
+The two frozen policy identities are:
+
+```text
+1p4b -> assets/initial_sft_policy   (24 layers, hidden size 2048)
+70m  -> assets/proxy_rm_sft_base   ( 6 layers, hidden size  512)
+```
+
+Every method in one comparison must use the same selected checkpoint as both
+trainable initialization and frozen KL reference. The 70M option retains the
+same two-unfrozen-layer policy configuration and the same prompt, response,
+optimizer, checkpoint, and evaluation budgets as the 1.4B option; it is not a
+claim of equal trainable-parameter fraction. Training/evaluation metadata must
+record the named policy variant, architecture dimensions, and model
+fingerprint, and consumers must reject a path whose local `config.json` does
+not match the declared variant or is not a GPT-NeoX causal LM.
+
+Policy outputs and plots use capacity-specific roots. A policy-independent
+CPDPO geometry/calibration artifact may be reused when and only when its proxy
+RM and data/code fingerprints are unchanged. AdvPO confidence has the same
+property. CPDPOv2 and AdvPO fixed-reference caches contain responses generated
+by the selected SFT policy and therefore must be rebuilt under policy-specific
+directories. Gold remains evaluation-only.

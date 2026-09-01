@@ -20,14 +20,10 @@ set -euo pipefail
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${CPDPO_SMOKE_SCHEDULE:-artifacts/prompt_schedules/smoke_seed_1.jsonl}"
 ADVPO_B="${ADVPO_B:-1.0}"
 RIDGE_LAMBDA="${ADVPO_RIDGE_LAMBDA:-1.0}"
-OUTPUT_ROOT="${ADVPO_SMOKE_OUTPUT_ROOT:-$JOB_STORAGE_ROOT/outputs/advpo_smoke}"
-CONFIDENCE_DIR="${ADVPO_SMOKE_CONFIDENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo_smoke/confidence}"
-REFERENCE_DIR="${ADVPO_SMOKE_REFERENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo_smoke/references_seed_1}"
 ARTIFACT_BATCH_SIZE="${ADVPO_ARTIFACT_BATCH_SIZE:-64}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
@@ -36,6 +32,28 @@ if [[ ! "$ARTIFACT_BATCH_SIZE" =~ ^[1-9][0-9]*$ || ! "$PROXY_BATCH_SIZE" =~ ^[1-
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
+if [[ -n "${ADVPO_SMOKE_OUTPUT_ROOT:-}" ]]; then
+  OUTPUT_ROOT="$ADVPO_SMOKE_OUTPUT_ROOT"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/advpo_smoke_policy_70m"
+else
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/advpo_smoke"
+fi
+if [[ -n "${ADVPO_SMOKE_CONFIDENCE_DIR:-}" ]]; then
+  CONFIDENCE_DIR="$ADVPO_SMOKE_CONFIDENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  CONFIDENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/policy_70m/confidence"
+else
+  CONFIDENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/confidence"
+fi
+if [[ -n "${ADVPO_SMOKE_REFERENCE_DIR:-}" ]]; then
+  REFERENCE_DIR="$ADVPO_SMOKE_REFERENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/policy_70m/references_seed_1"
+else
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/references_seed_1"
+fi
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -46,6 +64,7 @@ export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -d "$POLICY_PATH"
 test -d "$PROXY_RM_PATH"
@@ -63,6 +82,7 @@ srun python scripts/prepare_advpo_references.py \
   --prompt-schedule "$SCHEDULE" \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$REFERENCE_DIR" \
   --base-seed 1 \
@@ -85,6 +105,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --advpo-confidence "$CONFIDENCE_DIR/confidence_matrix.pt" \
   --reference-cache "$REFERENCE_DIR/reference_cache.pt" \
@@ -96,4 +117,4 @@ RUN_VARIANT="$(python -c 'import sys; from src.advpo.spec import advpo_run_name;
 test -f "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/run_metadata.json"
 test -f "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/rollout_metrics.jsonl"
 test -d "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/model"
-echo "PASS AdvPO end-to-end smoke B=$ADVPO_B ridge=$RIDGE_LAMBDA"
+echo "PASS AdvPO end-to-end smoke policy=$POLICY_VARIANT B=$ADVPO_B ridge=$RIDGE_LAMBDA"

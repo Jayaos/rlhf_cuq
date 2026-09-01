@@ -24,10 +24,8 @@ METHOD="${METHODS[${SLURM_ARRAY_TASK_ID:?missing array task ID}]}"
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="${CPDPO_SMOKE_SCHEDULE:-artifacts/prompt_schedules/smoke_seed_1.jsonl}"
-OUTPUT_ROOT="${CPDPO_SMOKE_OUTPUT_ROOT:-outputs/reward_overoptimization_smoke}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
@@ -36,6 +34,14 @@ if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
+if [[ -n "${CPDPO_SMOKE_OUTPUT_ROOT:-}" ]]; then
+  OUTPUT_ROOT="$CPDPO_SMOKE_OUTPUT_ROOT"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  OUTPUT_ROOT="outputs/reward_overoptimization_smoke_policy_70m"
+else
+  OUTPUT_ROOT="outputs/reward_overoptimization_smoke"
+fi
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -56,6 +62,7 @@ RUN_VARIANT="$(python -c 'import sys; from src.cpdpo.spec import method_run_name
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -d "$POLICY_PATH"
 test -d "$PROXY_RM_PATH"
@@ -83,10 +90,11 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-root "$OUTPUT_ROOT" \
   "${EXTRA_ARGS[@]}"
 
 test -f "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/run_metadata.json"
 test -d "$OUTPUT_ROOT/seed_1/$RUN_VARIANT/model"
-echo "PASS $METHOD one-rollout experiment smoke cpdpo_alpha=$CPDPO_ALPHA"
+echo "PASS $METHOD one-rollout experiment smoke policy=$POLICY_VARIANT cpdpo_alpha=$CPDPO_ALPHA"

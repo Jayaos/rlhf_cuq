@@ -27,10 +27,8 @@ SEED="${SLURM_ARRAY_TASK_ID:?missing seed array task ID}"
 PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not set}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-POLICY_PATH="${CPDPO_POLICY_PATH:-assets/initial_sft_policy}"
 PROXY_RM_PATH="${CPDPO_PROXY_RM_PATH:-models/rm-pythia-44m-prompt-disjoint_seed1}"
 SCHEDULE="artifacts/prompt_schedules/seed_${SEED}.jsonl"
-OUTPUT_ROOT="${CPDPO_OUTPUT_ROOT:-$JOB_STORAGE_ROOT/outputs/reward_overoptimization}"
 CPDPO_ALPHA="${CPDPO_ALPHA:-0.10}"
 PROXY_BATCH_SIZE="${CPDPO_PROXY_BATCH_SIZE:-64}"
 if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
@@ -39,6 +37,14 @@ if [[ ! "$PROXY_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 cd "$PROJECT_ROOT"
+source scripts/configure_policy_variant.sh
+if [[ -n "${CPDPO_OUTPUT_ROOT:-}" ]]; then
+  OUTPUT_ROOT="$CPDPO_OUTPUT_ROOT"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/reward_overoptimization_policy_70m"
+else
+  OUTPUT_ROOT="$JOB_STORAGE_ROOT/outputs/reward_overoptimization"
+fi
 set +u
 eval "$(conda shell.bash hook)"
 conda activate "$CONDA_ENV_NAME"
@@ -57,6 +63,10 @@ else
 fi
 if [[ -n "${CPDPO_V2_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$CPDPO_V2_REFERENCE_DIR"
+elif [[ "$POLICY_VARIANT" == "70m" && "$ALPHA_TAG" == "0p1" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}"
+elif [[ "$POLICY_VARIANT" == "70m" ]]; then
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}_alpha_${ALPHA_TAG}"
 elif [[ "$ALPHA_TAG" == "0p1" ]]; then
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/seed_${SEED}"
 else
@@ -65,6 +75,7 @@ fi
 
 python scripts/validate_legacy_sources.py
 python -m pip check
+python scripts/validate_policy_variant.py --variant "$POLICY_VARIANT" --policy-model "$POLICY_PATH"
 test -f "$SCHEDULE"
 test -f "$REFERENCE_DIR/reference_cache.pt"
 test -f "$REFERENCE_DIR/reference_cache_metadata.json"
@@ -88,6 +99,7 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --base-seed "$SEED" \
   --policy-model "$POLICY_PATH" \
+  --policy-variant "$POLICY_VARIANT" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \
@@ -96,4 +108,4 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --output-root "$OUTPUT_ROOT" \
   "${EXTRA_ARGS[@]}"
 
-echo "PASS method=cpdpo_v2 seed=$SEED rollouts=$ROLLOUT_STEPS alpha=$CPDPO_ALPHA"
+echo "PASS method=cpdpo_v2 seed=$SEED policy=$POLICY_VARIANT rollouts=$ROLLOUT_STEPS alpha=$CPDPO_ALPHA"

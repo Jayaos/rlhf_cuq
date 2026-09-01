@@ -13,6 +13,11 @@ from src.ppo.runtime_config import (
     apply_local_asset_overrides,
     resolve_ppo_config_path,
 )
+from src.ppo.policy_variants import (
+    DEFAULT_POLICY_VARIANT,
+    get_policy_variant,
+    validate_policy_checkpoint,
+)
 from src.reward_modeling.training.local_model_compat import apply_local_model_family
 
 
@@ -20,6 +25,90 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    @staticmethod
+    def _write_policy_config(path: Path, *, hidden_size: int, layers: int, reward: bool = False) -> None:
+        path.mkdir()
+        (path / "config.json").write_text(
+            json.dumps(
+                {
+                    "architectures": ["GPTNeoXRewardModel" if reward else "GPTNeoXForCausalLM"],
+                    "model_type": "gpt_neox_reward_model" if reward else "gpt_neox",
+                    "hidden_size": hidden_size,
+                    "num_hidden_layers": layers,
+                    "vocab_size": 50304,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_named_policy_variants_validate_full_causal_lms(self) -> None:
+        self.assertEqual(DEFAULT_POLICY_VARIANT, "1p4b")
+        self.assertEqual(get_policy_variant("1p4b").default_path, "assets/initial_sft_policy")
+        self.assertEqual(get_policy_variant("70m").default_path, "assets/proxy_rm_sft_base")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            small = root / "small"
+            large = root / "large"
+            self._write_policy_config(small, hidden_size=512, layers=6)
+            self._write_policy_config(large, hidden_size=2048, layers=24)
+            self.assertEqual(validate_policy_checkpoint(small, "70m")["variant"], "70m")
+            self.assertEqual(validate_policy_checkpoint(large, "1p4b")["variant"], "1p4b")
+            with self.assertRaisesRegex(ValueError, "expects hidden_size=2048"):
+                validate_policy_checkpoint(small, "1p4b")
+
+    def test_named_policy_variants_reject_scalar_reward_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            reward = Path(directory) / "reward"
+            self._write_policy_config(reward, hidden_size=512, layers=6, reward=True)
+            with self.assertRaisesRegex(ValueError, "scalar reward-model checkpoint"):
+                validate_policy_checkpoint(reward, "70m")
+
+    def test_experiment_jobs_thread_named_policy_variant(self) -> None:
+        helper = (ROOT / "scripts/configure_policy_variant.sh").read_text(encoding="utf-8")
+        self.assertIn('POLICY_VARIANT="${RLHF_POLICY_VARIANT:-1p4b}"', helper)
+        self.assertIn('POLICY_DEFAULT_PATH="assets/proxy_rm_sft_base"', helper)
+        self.assertIn("RLHF_POLICY_VARIANT must be exactly", helper)
+
+        jobs = (
+            "train_reward_overoptimization.sbatch",
+            "evaluate_reward_overoptimization.sbatch",
+            "smoke_reward_overoptimization.sbatch",
+            "prepare_cpdpo_v2_references.sbatch",
+            "train_cpdpo_v2.sbatch",
+            "evaluate_cpdpo_v2.sbatch",
+            "smoke_cpdpo_v2.sbatch",
+            "prepare_advpo_references.sbatch",
+            "train_advpo.sbatch",
+            "evaluate_advpo.sbatch",
+            "smoke_advpo.sbatch",
+        )
+        for filename in jobs:
+            with self.subTest(filename=filename):
+                text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+                self.assertIn("source scripts/configure_policy_variant.sh", text)
+                self.assertIn("scripts/validate_policy_variant.py", text)
+                self.assertIn('--policy-variant "$POLICY_VARIANT"', text)
+
+        for filename in (
+            "train_reward_overoptimization.sbatch",
+            "evaluate_reward_overoptimization.sbatch",
+            "train_cpdpo_v2.sbatch",
+            "evaluate_cpdpo_v2.sbatch",
+            "train_advpo.sbatch",
+            "evaluate_advpo.sbatch",
+        ):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            self.assertIn("reward_overoptimization_policy_70m", text)
+
+        for filename in (
+            "prepare_cpdpo_v2_references.sbatch",
+            "train_cpdpo_v2.sbatch",
+            "prepare_advpo_references.sbatch",
+            "train_advpo.sbatch",
+        ):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            self.assertIn("policy_70m", text)
+
     def test_local_rm_family_hint_preserves_path_and_exposes_pythia(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

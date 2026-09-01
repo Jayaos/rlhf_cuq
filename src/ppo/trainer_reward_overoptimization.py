@@ -44,6 +44,11 @@ from src.ppo.custom_trlx_trainers.experiment_ppo_trainer import (  # noqa: F401
     ExperimentAcceleratePPOTrainer,
 )
 from src.ppo.runtime_config import apply_local_asset_overrides
+from src.ppo.policy_variants import (
+    DEFAULT_POLICY_VARIANT,
+    POLICY_VARIANTS,
+    validate_policy_checkpoint,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +61,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every-rollouts", type=int, default=10)
     parser.add_argument("--base-seed", type=int, required=True)
     parser.add_argument("--policy-model", required=True)
+    parser.add_argument(
+        "--policy-variant",
+        choices=tuple(POLICY_VARIANTS),
+        default=DEFAULT_POLICY_VARIANT,
+        help="Declared initial/reference causal-LM capacity (default: 1p4b)",
+    )
     parser.add_argument("--proxy-rm", required=True)
     parser.add_argument("--geometry")
     parser.add_argument("--calibration")
@@ -197,6 +208,7 @@ def main() -> None:  # noqa: C901
     rank_config = Namespace(**training_conf.rank_config)
     sft_config = Namespace(**training_conf.sft_config)
     apply_local_asset_overrides(training_conf, rank_config, sft_config)
+    policy_architecture = validate_policy_checkpoint(sft_config.model_name, args.policy_variant)
     init_rng(training_conf)
 
     data_manifest = Path(training_conf.data_split_manifest_path).resolve()
@@ -380,6 +392,8 @@ def main() -> None:  # noqa: C901
         "prompt_schedule_sha256": sha256_file(schedule_path),
         "prompt_id_sequence_sha256": schedule_metadata["prompt_id_sequence_sha256"],
         "data_manifest_sha256": sha256_file(data_manifest),
+        "policy_variant": args.policy_variant,
+        "policy_architecture": policy_architecture,
         "initial_policy_fingerprint": initial_policy_fingerprint,
         "reference_policy_fingerprint": initial_policy_fingerprint,
         "proxy_rm_fingerprint": proxy_rm_fingerprint,
@@ -424,6 +438,8 @@ def main() -> None:  # noqa: C901
         "prompt_id_sequence_sha256": schedule_metadata["prompt_id_sequence_sha256"],
         "data_manifest_path": str(data_manifest),
         "data_manifest_sha256": sha256_file(data_manifest),
+        "policy_variant": args.policy_variant,
+        "policy_architecture": policy_architecture,
         "initial_policy_path": str(Path(sft_config.model_name).resolve()),
         "reference_policy_path": str(Path(sft_config.model_name).resolve()),
         "proxy_rm_path": str(Path(rank_config.model_names[0]).resolve()),

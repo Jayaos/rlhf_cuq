@@ -402,3 +402,25 @@ confidence/reference caches, policy outputs, evaluations, and plots under
 capacity-specific directories. Never mix a 1.4B-proxy treatment with a
 44M-proxy control or reuse artifacts across proxy fingerprints. Gold remains
 evaluation-only.
+
+## 18. Additive 70M policy-capacity ablation
+
+The user authorized a named choice between the existing 1.4B SFT policy and
+the already pinned full 70M SFT causal LM. The default remains `1p4b` at
+`assets/initial_sft_policy`; `70m` resolves to
+`assets/proxy_rm_sft_base`. The latter is the untouched causal LM, not the
+trained effective-44M scalar reward checkpoint. The reward conversion removes
+the vocabulary output head, not the input embedding, so a 44M RM cannot be
+used to generate policy responses.
+
+Every method in a comparison uses the same selected checkpoint as trainable
+initialization and frozen KL reference. Validate the named variant against
+`config.json` (`gpt_neox`, causal-LM architecture, expected layer count and
+hidden size), record it in run/checkpoint/evaluation provenance, and isolate
+70M outputs from 1.4B outputs. Preserve the existing two-unfrozen-layer and
+fair-budget settings.
+
+CPDPO geometry/calibration and AdvPO confidence do not consume the policy and
+may be reused only when their own proxy/data/code fingerprints validate.
+CPDPOv2 and AdvPO fixed-reference caches do consume SFT policy samples and must
+be rebuilt in policy-specific directories. Gold remains evaluation-only.

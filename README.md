@@ -237,7 +237,9 @@ bitsandbytes optimizer would require a separate GPU-enabled validation.
 Run downloads on the site-approved login or data-transfer node. The downloader reads [the source manifest](artifacts/source_manifest.json), passes each immutable revision to `huggingface_hub.snapshot_download`, and verifies every required local file by size and Git-blob SHA-1 or LFS SHA-256. The default download is about 2.93 GiB and includes:
 
 - `assets/initial_sft_policy`: the 1.4B policy;
-- `assets/proxy_rm_sft_base`: the 70M SFT base used to train proxy RMs;
+- `assets/proxy_rm_sft_base`: the full 70M SFT causal LM used to initialize
+  proxy RMs and, in the named small-policy ablation, used directly as the
+  initial/reference policy;
 - `assets/coste_preference_dataset`: RM training/validation data;
 - `assets/alpaca_farm_prompt_dataset`: PPO training and validation prompts.
 
@@ -723,6 +725,103 @@ sbatch --array=1 \
   scripts/slurm/evaluate_advpo.sbatch
 ```
 
+#### Selectable policy capacity: 1.4B or 70M
+
+The policy pipeline now has two explicit choices:
+
+| `RLHF_POLICY_VARIANT` | Initial and frozen-reference checkpoint | Role |
+|---|---|---|
+| `1p4b` (default) | `assets/initial_sft_policy` | existing main policy |
+| `70m` | `assets/proxy_rm_sft_base` | small-policy capacity ablation |
+
+The 70M path is the complete SFT causal LM, including its vocabulary output
+head. Do not point the policy setting at
+`models/rm-pythia-44m-prompt-disjoint_seed1`: that checkpoint has a scalar
+reward head and cannot generate. A custom `CPDPO_POLICY_PATH` remains
+available, but it must match the architecture declared by
+`RLHF_POLICY_VARIANT` or the job fails before loading model weights.
+
+Validate both downloaded policy assets on a login node:
+
+```bash
+python scripts/validate_policy_variant.py \
+  --variant 1p4b --policy-model assets/initial_sft_policy
+
+python scripts/validate_policy_variant.py \
+  --variant 70m --policy-model assets/proxy_rm_sft_base
+```
+
+The 1.4B behavior and locations remain unchanged when the variable is omitted.
+For a complete one-rollout 70M smoke with the existing 44M proxy RM and full
+CPDPO artifacts:
+
+```bash
+export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
+export POLICY70_SMOKE=$JOB_ROOT/outputs/reward_overoptimization_smoke_policy_70m
+
+sbatch --array=0-2 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,CPDPO_SMOKE_OUTPUT_ROOT="$POLICY70_SMOKE" \
+  scripts/slurm/smoke_reward_overoptimization.sbatch
+```
+
+Then launch the seed-1 full PPO/PairPPO/CPDPO comparison. The prompt schedule,
+proxy RM, geometry/calibration, hyperparameters, and response/update budgets
+are unchanged; only the initial/reference policy capacity changes:
+
+```bash
+export POLICY70_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_policy_70m
+
+sbatch --array=0-2 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+CPDPO geometry/calibration depend on the proxy RM and RM data, not on the
+policy. Therefore the existing `artifacts/cpdpo/proxy_rm_seed1` is valid for
+this command when the proxy remains the same 44M checkpoint. If the proxy RM
+also changes to the 1.4B ablation, rebuild those artifacts as described above.
+
+Evaluate the 70M runs with the same declared variant and output root:
+
+```bash
+sbatch --array=0-2 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,GOLD_RM_PATH="$GOLD_RM_PATH",CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  scripts/slurm/evaluate_reward_overoptimization.sbatch
+
+python scripts/aggregate_and_plot_reward_overoptimization.py \
+  --output-root "$POLICY70_OUTPUT" \
+  --policy-variant 70m \
+  --split D_rl_val_prompts \
+  --diagnostic-seed 1
+```
+
+CPDPOv2 and AdvPO reference caches contain SFT-generated responses and must be
+rebuilt for 70M. Their jobs automatically choose `policy_70m` reference-cache
+subdirectories when the named variant is exported:
+
+```bash
+sbatch \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,CPDPO_V2_SEED=1 \
+  scripts/slurm/prepare_cpdpo_v2_references.sbatch
+
+sbatch --array=1 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  scripts/slurm/train_cpdpo_v2.sbatch
+
+sbatch \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,ADVPO_SEED=1 \
+  scripts/slurm/prepare_advpo_references.sbatch
+
+sbatch --array=1 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,ROLLOUT_STEPS=100,ADVPO_B=1,ADVPO_RIDGE_LAMBDA=1.0,CPDPO_OUTPUT_ROOT="$POLICY70_OUTPUT" \
+  scripts/slurm/train_advpo.sbatch
+```
+
+AdvPO confidence is policy-independent and can be reused only when its proxy
+RM and ridge are unchanged. Every policy run/evaluation records the selected
+variant, architecture dimensions, and policy fingerprint. Aggregation rejects
+mixed 70M/1.4B records.
+
 ### Experiment 2: one-update PPO smoke
 
 The checked-in batch job requests one A100/H100/H200-class GPU, four CPUs,
@@ -970,6 +1069,7 @@ python scripts/evaluate_policy_checkpoints.py \
   --run-dir outputs/reward_overoptimization/seed_1/cpdpo \
   --initial-policy assets/initial_sft_policy \
   --reference-policy assets/initial_sft_policy \
+  --policy-variant 1p4b \
   --proxy-rm models/rm-pythia-44m-prompt-disjoint_seed1 \
   --gold-rm /absolute/path/to/reward-model-human \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
@@ -989,6 +1089,7 @@ seeds, create an explicitly labelled diagnostic:
 ```bash
 python scripts/aggregate_and_plot_reward_overoptimization.py \
   --output-root /storage/scratch1/0/$USER/rlhf-cuq/outputs/reward_overoptimization \
+  --policy-variant 1p4b \
   --split D_rl_val_prompts \
   --diagnostic-seed 1
 ```
