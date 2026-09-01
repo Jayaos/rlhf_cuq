@@ -143,6 +143,23 @@ class RuntimeConfigTests(unittest.TestCase):
         ):
             text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
             self.assertIn("policy_70m", text)
+            self.assertIn("${POLICY_PRECISION}", text)
+
+        for filename in (
+            "prepare_cpdpo_v2_references.sbatch",
+            "prepare_advpo_references.sbatch",
+        ):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            self.assertIn('--dtype "$POLICY_PRECISION"', text)
+
+        for filename in ("smoke_cpdpo_v2.sbatch", "smoke_advpo.sbatch"):
+            text = (ROOT / "scripts/slurm" / filename).read_text(encoding="utf-8")
+            reference_stage, training_stage = text.split(
+                'srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG"', 1
+            )
+            self.assertIn('--dtype "$POLICY_PRECISION"', reference_stage)
+            self.assertNotIn('"${POLICY_TRAINING_ARGS[@]}"', reference_stage)
+            self.assertIn('"${POLICY_TRAINING_ARGS[@]}"', training_stage)
 
     def test_local_rm_family_hint_preserves_path_and_exposes_pythia(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

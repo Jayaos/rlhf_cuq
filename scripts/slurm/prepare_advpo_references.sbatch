@@ -35,7 +35,7 @@ source scripts/configure_policy_variant.sh
 if [[ -n "${ADVPO_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$ADVPO_REFERENCE_DIR"
 elif [[ "$POLICY_VARIANT" == "70m" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/policy_70m/seed_${SEED}"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/policy_70m_${POLICY_PRECISION}/seed_${SEED}"
 else
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/seed_${SEED}"
 fi
@@ -65,6 +65,6 @@ srun python scripts/prepare_advpo_references.py \
   --batch-size "$GENERATION_BATCH_SIZE" \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
-  --dtype bf16
+  --dtype "$POLICY_PRECISION"
 
 echo "PASS AdvPO references seed=$SEED policy=$POLICY_VARIANT path=$REFERENCE_DIR"

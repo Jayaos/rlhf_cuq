@@ -64,9 +64,9 @@ fi
 if [[ -n "${CPDPO_V2_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$CPDPO_V2_REFERENCE_DIR"
 elif [[ "$POLICY_VARIANT" == "70m" && "$ALPHA_TAG" == "0p1" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m_${POLICY_PRECISION}/seed_${SEED}"
 elif [[ "$POLICY_VARIANT" == "70m" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m/seed_${SEED}_alpha_${ALPHA_TAG}"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/policy_70m_${POLICY_PRECISION}/seed_${SEED}_alpha_${ALPHA_TAG}"
 elif [[ "$ALPHA_TAG" == "0p1" ]]; then
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2/seed_${SEED}"
 else

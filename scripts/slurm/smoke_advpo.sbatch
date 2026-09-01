@@ -50,7 +50,7 @@ fi
 if [[ -n "${ADVPO_SMOKE_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$ADVPO_SMOKE_REFERENCE_DIR"
 elif [[ "$POLICY_VARIANT" == "70m" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/policy_70m/references_seed_1"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/policy_70m_${POLICY_PRECISION}/references_seed_1"
 else
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo_smoke/references_seed_1"
 fi
@@ -83,7 +83,6 @@ srun python scripts/prepare_advpo_references.py \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
-  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --output-dir "$REFERENCE_DIR" \
   --base-seed 1 \
@@ -91,7 +90,7 @@ srun python scripts/prepare_advpo_references.py \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --artifact-scope smoke \
   --device cuda:0 \
-  --dtype bf16
+  --dtype "$POLICY_PRECISION"
 
 srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   src/ppo/trainer_reward_overoptimization.py \
@@ -107,6 +106,7 @@ srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --advpo-confidence "$CONFIDENCE_DIR/confidence_matrix.pt" \
   --reference-cache "$REFERENCE_DIR/reference_cache.pt" \

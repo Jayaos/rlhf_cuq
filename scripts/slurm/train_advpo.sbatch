@@ -60,7 +60,7 @@ CONFIDENCE_DIR="${ADVPO_CONFIDENCE_DIR:-$JOB_STORAGE_ROOT/artifacts/advpo/proxy_
 if [[ -n "${ADVPO_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$ADVPO_REFERENCE_DIR"
 elif [[ "$POLICY_VARIANT" == "70m" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/policy_70m/seed_${SEED}"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/policy_70m_${POLICY_PRECISION}/seed_${SEED}"
 else
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/advpo/references/seed_${SEED}"
 fi

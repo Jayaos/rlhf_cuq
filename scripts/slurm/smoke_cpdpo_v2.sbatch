@@ -42,7 +42,7 @@ fi
 if [[ -n "${CPDPO_V2_SMOKE_REFERENCE_DIR:-}" ]]; then
   REFERENCE_DIR="$CPDPO_V2_SMOKE_REFERENCE_DIR"
 elif [[ "$POLICY_VARIANT" == "70m" ]]; then
-  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/policy_70m/seed_1"
+  REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/policy_70m_${POLICY_PRECISION}/seed_1"
 else
   REFERENCE_DIR="$JOB_STORAGE_ROOT/artifacts/cpdpo_v2_smoke/seed_1"
 fi
@@ -79,7 +79,6 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --manifest data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
-  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \
@@ -89,7 +88,7 @@ srun python scripts/prepare_cpdpo_v2_reference_cache.py \
   --batch-size 2 \
   --proxy-batch-size "$PROXY_BATCH_SIZE" \
   --device cuda:0 \
-  --dtype bf16 \
+  --dtype "$POLICY_PRECISION" \
   "${ALLOW_ARGS[@]}"
 
 srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
@@ -106,6 +105,7 @@ srun accelerate launch --config_file "$POLICY_ACCELERATE_CONFIG" \
   --base-seed 1 \
   --policy-model "$POLICY_PATH" \
   --policy-variant "$POLICY_VARIANT" \
+  "${POLICY_TRAINING_ARGS[@]}" \
   --proxy-rm "$PROXY_RM_PATH" \
   --geometry "$ARTIFACT_DIR/pair_geometry.pt" \
   --calibration "$ARTIFACT_DIR/conformal_calibration.json" \

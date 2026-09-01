@@ -817,12 +817,34 @@ python scripts/aggregate_and_plot_reward_overoptimization.py \
 ```
 
 CPDPOv2 and AdvPO reference caches contain SFT-generated responses and must be
-rebuilt for 70M. Their jobs automatically choose `policy_70m` reference-cache
-subdirectories when the named variant is exported:
+rebuilt for 70M. Their jobs automatically choose `policy_70m_fp32` (or
+`policy_70m_bf16`) reference-cache subdirectories from the named variant and
+declared precision. First run their isolated
+one-rollout smoke jobs with the same FP32 optimization profile used by the
+three primary branches:
+
+```bash
+export CPDPOV2_70M_SMOKE=$JOB_ROOT/outputs/cpdpo_v2_smoke_policy_70m_fp32_lr1e7_l1
+export ADVPO_70M_SMOKE=$JOB_ROOT/outputs/advpo_smoke_policy_70m_fp32_lr1e7_l1
+
+sbatch \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,CPDPO_V2_SMOKE_OUTPUT_ROOT="$CPDPOV2_70M_SMOKE" \
+  scripts/slurm/smoke_cpdpo_v2.sbatch
+
+sbatch \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,RLHF_POLICY_LEARNING_RATE=1e-7,RLHF_POLICY_NUM_LAYERS_UNFROZEN=1,RLHF_POLICY_MAX_GRAD_NORM=1.0,ADVPO_SMOKE_OUTPUT_ROOT="$ADVPO_70M_SMOKE" \
+  scripts/slurm/smoke_advpo.sbatch
+```
+
+These smoke launchers generate their own two-prompt fixed-reference caches.
+Reference generation receives the declared inference dtype, while only the
+trainer receives learning-rate, unfrozen-layer, gradient-norm, and Accelerate
+precision arguments. After both logs end in their method-specific `PASS`, build
+the full seed-1 reference caches and launch the two full runs:
 
 ```bash
 sbatch \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,CPDPO_V2_SEED=1 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,CPDPO_V2_SEED=1 \
   scripts/slurm/prepare_cpdpo_v2_references.sbatch
 
 sbatch --array=1 \
@@ -830,7 +852,7 @@ sbatch --array=1 \
   scripts/slurm/train_cpdpo_v2.sbatch
 
 sbatch \
-  --export=ALL,RLHF_POLICY_VARIANT=70m,ADVPO_SEED=1 \
+  --export=ALL,RLHF_POLICY_VARIANT=70m,RLHF_POLICY_PRECISION=fp32,ADVPO_SEED=1 \
   scripts/slurm/prepare_advpo_references.sbatch
 
 sbatch --array=1 \

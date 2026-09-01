@@ -184,7 +184,7 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
 - Add a real one-GPU 1.4B RM smoke, static launch/config tests, and a runbook
   that requires fresh capacity-specific artifacts and outputs for all methods.
 
-## 12. Add selectable 70M/1.4B policy capacity — implemented locally; cluster smoke pending
+## 12. Add selectable 70M/1.4B policy capacity — primary FP32 cluster smoke passed
 
 - Preserve `assets/initial_sft_policy` and all existing output locations as the
   default `1p4b` policy track.
@@ -211,3 +211,7 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
   a non-finite gradient norm before optimizer step one. Validate the declared
   precision against Accelerate at runtime and apply it uniformly to every
   compared method; retain BF16 as the unchanged 1.4B default.
+- Record the successful FP32 PPO/PairPPO/CPDPO smoke and thread the same
+  declared dtype into policy-generated CPDPOv2/AdvPO reference caches. Keep
+  optimizer-only arguments out of the cache builders and require separate
+  CPDPOv2/AdvPO smoke passes before their full 70M runs.

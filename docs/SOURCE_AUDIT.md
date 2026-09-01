@@ -373,6 +373,15 @@ training, which is computationally practical for 70M, while retaining BF16 as
 the untouched 1.4B/default path. All methods in a 70M comparison must share
 the same precision profile.
 
+The subsequent full-FP32 one-rollout cluster matrix passed for PPO, PairPPO,
+and CPDPO with learning rate `1e-7`, one unfrozen layer, and maximum gradient
+norm `1.0`. That establishes execution and finite-update viability for this
+named profile, not reward-quality evidence. The additive CPDPOv2 and AdvPO
+launchers use the same policy profile, but their fixed SFT response caches are
+policy- and dtype-dependent and therefore must be regenerated for 70M/FP32.
+Their reference builders receive only the resolved inference dtype; optimizer
+arguments are restricted to the training process.
+
 Prompt, response, update, checkpoint, and evaluation budgets remain common.
 Training/evaluation metadata must record the named policy variant,
 architecture dimensions, model fingerprint, and resolved optimization

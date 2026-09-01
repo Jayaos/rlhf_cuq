@@ -124,8 +124,9 @@ not freeze that value for a scientific run.
 - the scalar-head 44M proxy-RM checkpoint is never accepted as a policy;
 - the selected checkpoint initializes the trainable policy and the identical
   frozen KL reference for every compared method;
-- the existing two-unfrozen-layer setting and all scientific budgets remain
-  unchanged across policy variants;
+- the literal capacity-only profile retains the existing two-unfrozen-layer
+  setting; the empirically stable 70M profile is separately named and records
+  FP32, learning rate `1e-7`, one unfrozen layer, and gradient norm `1.0`;
 - 70M run outputs and all policy-generated fixed-reference caches have
   capacity-specific paths and may not be combined with 1.4B records;
 - CPDPO geometry/calibration and AdvPO confidence remain policy-independent and
