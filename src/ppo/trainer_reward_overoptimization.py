@@ -50,6 +50,7 @@ from src.ppo.policy_variants import (
     POLICY_VARIANTS,
     validate_policy_checkpoint,
 )
+from src.reward_modeling.training.label_noise import load_optional_label_noise_metadata
 
 
 def parse_args() -> argparse.Namespace:
@@ -415,6 +416,7 @@ def main() -> None:  # noqa: C901
 
     initial_policy_fingerprint = model_fingerprint(sft_config.model_name)
     proxy_rm_fingerprint = model_fingerprint(rank_config.model_names[0])
+    proxy_rm_label_noise = load_optional_label_noise_metadata(rank_config.model_names[0])
     pair_artifacts = reward_fn.provenance() if isinstance(reward_fn, PairRewardCallback) else None
     reference_anchor = (
         reward_fn.provenance() if isinstance(reward_fn, ReferenceAnchoredRewardCallback) else None
@@ -448,6 +450,7 @@ def main() -> None:  # noqa: C901
         "initial_policy_fingerprint": initial_policy_fingerprint,
         "reference_policy_fingerprint": initial_policy_fingerprint,
         "proxy_rm_fingerprint": proxy_rm_fingerprint,
+        "proxy_rm_label_noise": proxy_rm_label_noise,
         "pair_artifacts": pair_artifacts,
         "code_revision": code_revision,
     }
@@ -498,6 +501,7 @@ def main() -> None:  # noqa: C901
         "initial_policy_fingerprint": initial_policy_fingerprint,
         "reference_policy_fingerprint": initial_policy_fingerprint,
         "proxy_rm_fingerprint": proxy_rm_fingerprint,
+        "proxy_rm_label_noise": proxy_rm_label_noise,
         "code_revision": code_revision,
         "gold_training_access": False,
         "smoke_artifacts_allowed": args.allow_smoke_artifacts,

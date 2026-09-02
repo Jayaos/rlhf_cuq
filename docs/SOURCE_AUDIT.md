@@ -426,3 +426,37 @@ RM and data/code fingerprints are unchanged. AdvPO confidence has the same
 property. CPDPOv2 and AdvPO fixed-reference caches contain responses generated
 by the selected SFT policy and therefore must be rebuilt under policy-specific
 directories. Gold remains evaluation-only.
+
+## Additive proxy-RM label-noise stress track
+
+On 2026-09-01 the user authorized a separately named proxy-RM stress track
+with 30% synthetic preference-label noise. This does not replace the frozen
+noiseless proxy checkpoint or alter any PPO, PairPPO, CPDPO, CPDPOv2, or AdvPO
+equation. Coste et al. report both noiseless and 25%-noise experiments; the
+user-selected 30% value is therefore a new stress ablation rather than a
+claim of reproducing Coste's noisy condition.
+
+The additive seam is the manifest adapter, before `CustomHFPref` converts each
+preference row into preferred/rejected response order. Only `D_rm_train` is
+eligible for corruption. `D_rm_val` remains clean so final validation measures
+alignment with the gold-generated labels, and `D_cal` remains immutable and
+clean so CPDPO calibration retains the specified held-out target labels.
+Prompts, responses, record IDs, split membership, and source files never
+change.
+
+For `n` training records, a declared rate `rho` flips exactly
+`floor(rho*n)` binary preferences. Records are ranked without replacement by
+`SHA256(algorithm_version || noise_seed || split_record_id)`; selecting the
+lowest hashes makes the subset independent of dataset iteration order. The
+metadata records the requested/realized rates, seed, role, algorithm, record
+count, flip count, manifest hash, and hash of the canonical flipped-ID file.
+The complete flipped-ID list is persisted next to the model. Periodic and
+final model configs also carry the same compact metadata, and resume rejects
+a mismatch.
+
+Noise is opt-in and defaults to zero, preserving existing paths and behavior.
+An enabled run uses noise-specific model/checksum/output roots. Every
+downstream method in a noisy comparison must use the same frozen noisy proxy
+checkpoint and fresh proxy-fingerprinted CPDPO/AdvPO artifacts and policy
+outputs. No noiseless artifact or control may be mixed into that comparison;
+gold remains offline evaluation-only.

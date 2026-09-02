@@ -501,6 +501,15 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("scheduler.pt", job_text)
         self.assertIn("rng_state.pth", job_text)
         self.assertIn("the legacy trainer resumes only the latest checkpoint", job_text)
+        for expected in (
+            'RM_LABEL_NOISE_RATE="${RM_LABEL_NOISE_RATE:-0.0}"',
+            'RM_LABEL_NOISE_SEED="${RM_LABEL_NOISE_SEED:-1}"',
+            "rm-pythia-44m-prompt-disjoint-label-noise-${NOISE_TAG}",
+            '--rm_label_noise_rate "$RM_LABEL_NOISE_RATE"',
+            '--rm_label_noise_seed "$RM_LABEL_NOISE_SEED"',
+            "scripts/validate_rm_label_noise.py",
+        ):
+            self.assertIn(expected, job_text)
 
     def test_proxy_rm_jobs_make_conda_activation_nounset_safe(self) -> None:
         for filename in (
@@ -568,6 +577,10 @@ class RuntimeConfigTests(unittest.TestCase):
             "the legacy trainer resumes only the latest checkpoint",
             "final_eval_results.json",
             "PASS matched-capacity 1.4B proxy RM",
+            "rm-pythia-1p4b-prompt-disjoint-label-noise-${NOISE_TAG}",
+            '--rm_label_noise_rate "$RM_LABEL_NOISE_RATE"',
+            '--rm_label_noise_seed "$RM_LABEL_NOISE_SEED"',
+            "scripts/validate_rm_label_noise.py",
         ):
             self.assertIn(expected, full_job)
 
@@ -659,6 +672,9 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertIn("prompt-disjoint-smoke_seed${RM_SEED}", job_text)
         self.assertIn("PASS finite reward normalization", job_text)
+        self.assertIn('RM_LABEL_NOISE_RATE="${RM_LABEL_NOISE_RATE:-0.0}"', job_text)
+        self.assertIn('--rm_label_noise_rate "$RM_LABEL_NOISE_RATE"', job_text)
+        self.assertIn("scripts/validate_rm_label_noise.py", job_text)
         self.assertIn(
             "Smoke checkpoint (use only for baseline_smoke PPO integration)",
             job_text,

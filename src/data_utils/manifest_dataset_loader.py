@@ -34,10 +34,29 @@ def _preference_dataset(conf: Any, manifest_path: Path):
     from torch.utils.data import ConcatDataset
 
     from src.data_utils.oa_custom_datasets.rank_datasets import CustomHFPref
+    from src.reward_modeling.training.label_noise import (
+        apply_preference_label_noise,
+        sha256_file,
+    )
 
     train_rows = load_split_records(manifest_path, "D_rm_train", expected_kind="preference")
     validation_rows = load_split_records(manifest_path, "D_rm_val", expected_kind="preference")
-    train = CustomHFPref(train_rows, len(train_rows))
+    noise = apply_preference_label_noise(
+        train_rows,
+        rate=getattr(conf, "rm_label_noise_rate", 0.0),
+        seed=getattr(conf, "rm_label_noise_seed", 0),
+        manifest_sha256=sha256_file(manifest_path),
+    )
+    train = CustomHFPref(noise.rows, len(noise.rows))
+    if noise.metadata["enabled"]:
+        train.rm_label_noise_metadata = noise.metadata
+        train.rm_label_noise_flipped_record_ids = noise.flipped_record_ids
+        print(
+            "PASS deterministic RM label noise",
+            f"rate={noise.metadata['requested_rate']}",
+            f"flips={noise.metadata['flip_count']}/{noise.metadata['train_record_count']}",
+            f"seed={noise.metadata['seed']}",
+        )
     validation = CustomHFPref(validation_rows, len(validation_rows), train=False)
     return ConcatDataset([train]), {"D_rm_val": _limited_eval(validation, conf.eval_size)}
 

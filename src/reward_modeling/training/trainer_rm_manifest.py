@@ -21,6 +21,9 @@ from src.reward_modeling.training.final_evaluation import (  # noqa: E402
 from src.reward_modeling.training.local_model_compat import (  # noqa: E402
     apply_local_model_family,
 )
+from src.reward_modeling.training.label_noise import (  # noqa: E402
+    persist_label_noise_provenance,
+)
 from src.reward_modeling.training import trainer_rm as legacy_trainer  # noqa: E402
 
 
@@ -70,6 +73,31 @@ def _with_local_model_family(parser: Callable[[], Any]) -> Callable[[], Any]:
 
 class ManifestRMTrainer(legacy_trainer.RMTrainer):
     """Add exact post-update validation without changing Coste training."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        datasets = getattr(self.train_dataset, "datasets", (self.train_dataset,))
+        noisy_datasets = [
+            dataset
+            for dataset in datasets
+            if hasattr(dataset, "rm_label_noise_metadata")
+        ]
+        if len(noisy_datasets) > 1:
+            raise RuntimeError("A proxy-RM run may contain only one label-noise specification")
+        if noisy_datasets:
+            dataset = noisy_datasets[0]
+            metadata = dict(dataset.rm_label_noise_metadata)
+            flipped_ids = tuple(dataset.rm_label_noise_flipped_record_ids)
+            existing = getattr(self.model.config, "rm_label_noise", None)
+            if existing is not None and existing != metadata:
+                raise RuntimeError("Model config label-noise provenance does not match D_rm_train")
+            self.model.config.rm_label_noise = metadata
+            persist_label_noise_provenance(self.args.output_dir, metadata, flipped_ids)
+            print(
+                "PASS persisted RM label-noise provenance",
+                f"path={self.args.output_dir}",
+                f"flips={metadata['flip_count']}",
+            )
 
     def train(self, *args: Any, **kwargs: Any) -> Any:
         train_output = super().train(*args, **kwargs)

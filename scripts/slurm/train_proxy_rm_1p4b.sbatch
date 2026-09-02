@@ -9,6 +9,8 @@
 # Resume only from the latest complete immediate checkpoint child:
 #   sbatch --export=ALL,RM_RESUME_CHECKPOINT=/scratch/.../checkpoint-N \
 #     scripts/slurm/train_proxy_rm_1p4b.sbatch
+# The same opt-in label-noise controls are supported here:
+#   RM_LABEL_NOISE_RATE=0.30 RM_LABEL_NOISE_SEED=1
 
 #SBATCH -J proxy_rm_pythia_1p4b
 #SBATCH --account=gts-yxie77-paid
@@ -34,11 +36,28 @@ PROJECT_ROOT="${RLHF_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is not s
 RM_SEED="${SLURM_ARRAY_TASK_ID:-${RM_SEED:-1}}"
 CONDA_ENV_NAME="${RLHF_CONDA_ENV:-rlhf-cuq}"
 JOB_STORAGE_ROOT="${RLHF_JOB_STORAGE_ROOT:-/storage/scratch1/0/${USER}/rlhf-cuq}"
-OUTPUT_BASE="${RM_OUTPUT_BASE:-$JOB_STORAGE_ROOT/models/rm-pythia-1p4b-prompt-disjoint}"
+RM_LABEL_NOISE_RATE="${RM_LABEL_NOISE_RATE:-0.0}"
+RM_LABEL_NOISE_SEED="${RM_LABEL_NOISE_SEED:-1}"
+if [[ ! "$RM_LABEL_NOISE_SEED" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: RM_LABEL_NOISE_SEED must be a nonnegative integer" >&2
+  exit 2
+fi
+NOISE_TAG="$(python -c 'from decimal import Decimal; import sys; value=Decimal(sys.argv[1]); assert value.is_finite() and 0 <= value <= 1; text=format(value.normalize(), "f"); print(text.replace(".", "p"))' "$RM_LABEL_NOISE_RATE")" || {
+  echo "ERROR: RM_LABEL_NOISE_RATE must be a finite decimal in [0, 1]" >&2
+  exit 2
+}
+if [[ "$NOISE_TAG" == "0" ]]; then
+  DEFAULT_OUTPUT_BASE="$JOB_STORAGE_ROOT/models/rm-pythia-1p4b-prompt-disjoint"
+  CHECKSUM_STEM="rm-pythia-1p4b-prompt-disjoint"
+else
+  DEFAULT_OUTPUT_BASE="$JOB_STORAGE_ROOT/models/rm-pythia-1p4b-prompt-disjoint-label-noise-${NOISE_TAG}"
+  CHECKSUM_STEM="rm-pythia-1p4b-prompt-disjoint-label-noise-${NOISE_TAG}"
+fi
+OUTPUT_BASE="${RM_OUTPUT_BASE:-$DEFAULT_OUTPUT_BASE}"
 OUTPUT_DIR="${OUTPUT_BASE}_seed${RM_SEED}"
 RESUME_CHECKPOINT="${RM_RESUME_CHECKPOINT:-}"
 CHECKSUM_DIR="${RM_CHECKSUM_DIR:-$JOB_STORAGE_ROOT/checksums}"
-CHECKSUM_FILE="$CHECKSUM_DIR/rm-pythia-1p4b-prompt-disjoint_seed${RM_SEED}.sha256"
+CHECKSUM_FILE="$CHECKSUM_DIR/${CHECKSUM_STEM}_seed${RM_SEED}.sha256"
 
 if [[ ! "$RM_SEED" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: RM_SEED/SLURM_ARRAY_TASK_ID must be a positive integer: $RM_SEED" >&2
@@ -83,6 +102,7 @@ echo "Conda environment: $CONDA_PREFIX"
 echo "Scratch/cache root: $JOB_STORAGE_ROOT"
 echo "RM capacity track: 1.4B"
 echo "RM seed: $RM_SEED"
+echo "RM training-label noise: rate=$RM_LABEL_NOISE_RATE seed=$RM_LABEL_NOISE_SEED"
 echo "SFT initialization: assets/initial_sft_policy"
 echo "Output: $OUTPUT_DIR"
 echo "Checksums: $CHECKSUM_FILE"
@@ -178,11 +198,19 @@ srun accelerate launch --config_file configs/accelerate_config_simple.yaml \
   --configs defaults_rm rm-pythia-44m rm-pythia-1p4b-cluster-split \
   --rng_seed "$RM_SEED" \
   --output_dir "$OUTPUT_BASE" \
+  --rm_label_noise_rate "$RM_LABEL_NOISE_RATE" \
+  --rm_label_noise_seed "$RM_LABEL_NOISE_SEED" \
   "${RESUME_ARGS[@]}"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   echo "ERROR: training returned success but output is missing: $OUTPUT_DIR" >&2
   exit 1
+fi
+if [[ "$NOISE_TAG" != "0" ]]; then
+  python scripts/validate_rm_label_noise.py \
+    --model-dir "$OUTPUT_DIR" \
+    --rate "$RM_LABEL_NOISE_RATE" \
+    --seed "$RM_LABEL_NOISE_SEED"
 fi
 test -f "$OUTPUT_DIR/final_eval_results.json"
 find "$OUTPUT_DIR" -type f -print0 | sort -z | xargs -0 sha256sum > "$CHECKSUM_FILE"

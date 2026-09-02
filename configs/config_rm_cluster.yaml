@@ -14,6 +14,8 @@ rm-pythia-44m-cluster-split:
   model_family: pythia
   output_dir: models/rm-pythia-44m-prompt-disjoint
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+  rm_label_noise_rate: 0.0
+  rm_label_noise_seed: 0
 
 # Non-scientific GPU pipeline check: 512 deterministic training pairs produce
 # 16 optimizer steps with the inherited batch-size 8 / accumulation 4 setup.
@@ -22,6 +24,8 @@ rm-pythia-44m-cluster-smoke:
   model_family: pythia
   output_dir: models/rm-pythia-44m-prompt-disjoint-smoke
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+  rm_label_noise_rate: 0.0
+  rm_label_noise_seed: 0
   datasets:
     - custom_hf_pref:
         size: 512
@@ -56,6 +60,8 @@ rm-pythia-1p4b-cluster-split:
   model_family: pythia
   output_dir: models/rm-pythia-1p4b-prompt-disjoint
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+  rm_label_noise_rate: 0.0
+  rm_label_noise_seed: 0
   gradient_checkpointing: true
   gradient_accumulation_steps: 32
   per_device_train_batch_size: 1
@@ -70,6 +76,8 @@ rm-pythia-1p4b-cluster-smoke:
   model_family: pythia
   output_dir: models/rm-pythia-1p4b-prompt-disjoint-smoke
   data_split_manifest_path: data/processed/alpaca_farm_prompt_disjoint_v1/manifest.json
+  rm_label_noise_rate: 0.0
+  rm_label_noise_seed: 0
   datasets:
     - custom_hf_pref:
         size: 8

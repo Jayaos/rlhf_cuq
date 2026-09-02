@@ -224,3 +224,20 @@ PyTorch/TRLX mathematical tests and real one-rollout job remain gated on
 - Right-size every offline evaluation launcher to 4 CPUs, 24 GiB host memory,
   and 3 hours using completed Phoenix MaxRSS/elapsed evidence. Do not infer a
   corresponding reduction for training or artifact jobs from evaluation data.
+
+## 13. Add deterministic proxy-RM label-noise stress track - done locally; cluster smoke pending
+
+- Preserve the existing noiseless manifest, proxy checkpoints, and output
+  paths unchanged; expose label noise only through explicit RM configuration.
+- Flip exactly `floor(rate * len(D_rm_train))` binary preferences using a
+  seed- and record-ID-addressed SHA-256 ranking without replacement.
+- Keep `D_rm_val`, `D_cal`, prompts, answers, IDs, and split membership clean
+  and unchanged.
+- Persist compact corruption metadata in every model config and write the
+  complete canonical flipped-record-ID list and its hash at the RM output
+  root; reject resume under different noise provenance.
+- Give noisy 44M and 1.4B checkpoints/checksums distinct default paths and
+  expose the rate/seed through their Slurm launchers.
+- Add dependency-free selection tests, manifest-adapter integration tests,
+  launch/static tests, and a runbook for rebuilding every downstream artifact
+  under noise-specific roots.

@@ -25,6 +25,7 @@ from src.cpdpo.artifacts import (
 )
 from src.cpdpo.reward_features import load_proxy_feature_scorer
 from src.data_utils.split_manifest import load_split_records, verify_split_manifest
+from src.reward_modeling.training.label_noise import load_optional_label_noise_metadata
 
 
 def arguments() -> argparse.Namespace:
@@ -133,6 +134,7 @@ def main() -> None:
         "feature_extraction": "input_to_GPTNeoXRewardModel.out_proj",
         "proxy_rm_path": str(proxy_rm),
         "proxy_rm_fingerprint": model_fingerprint(proxy_rm),
+        "proxy_rm_label_noise": load_optional_label_noise_metadata(proxy_rm),
         "tokenizer_fingerprint": tokenizer_fingerprint(proxy_rm),
         "data_manifest_path": str(manifest),
         "data_manifest_sha256": sha256_file(manifest),

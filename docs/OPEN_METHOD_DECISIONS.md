@@ -132,3 +132,21 @@ not freeze that value for a scientific run.
 - CPDPO geometry/calibration and AdvPO confidence remain policy-independent and
   may be reused only when their proxy/data/code fingerprints validate;
 - gold remains offline evaluation-only for both policy capacities.
+
+## Frozen for the additive proxy-RM label-noise stress track
+
+- noiseless proxy-RM training remains the default and retains its existing
+  checkpoint/output identities;
+- the primary requested stress value is `label_noise_rate=0.30` and is not
+  presented as Coste's 25%-noise reproduction;
+- only `D_rm_train` binary preference labels are flipped;
+- `D_rm_val` and `D_cal` labels stay clean, and no prompt, answer, ID, or split
+  membership changes;
+- the exact flip count is `floor(rate * n_train)` and selection is without
+  replacement by a declared seed plus stable split-record ID;
+- rate, seed, algorithm, counts, manifest hash, and flipped-ID hash/list are
+  immutable run provenance and must match on resume;
+- every method in a noisy comparison uses the same noisy proxy checkpoint and
+  newly fingerprinted downstream artifacts/output roots;
+- gold remains unavailable to proxy or policy training and cannot select the
+  noise seed, rate, checkpoint, or horizon.

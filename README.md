@@ -581,6 +581,90 @@ multi-GPU RM job: each array element is an independent one-GPU seed. Phoenix
 uses QOS and assigns the resource pool from the request; do not add an arbitrary
 partition copied from another cluster.
 
+#### Additive stress ablation: 30% proxy-RM training-label noise
+
+The noiseless proxy RM above remains the default and is never overwritten.
+This opt-in track flips only `D_rm_train` preferences; `D_rm_val` and `D_cal`
+stay clean. Selection is deterministic and without replacement: it ranks
+stable split-record IDs using `RM_LABEL_NOISE_SEED` and flips exactly
+`floor(rate * n_train)` labels. With the current 28,244-row training role,
+`rate=0.30` flips 8,473 records (realized rate approximately 0.299993).
+
+This user-selected 30% stress condition is not Coste's reported 25%-noise
+condition. First exercise the reduced RM path:
+
+```bash
+sbatch \
+  --export=ALL,RM_LABEL_NOISE_RATE=0.30,RM_LABEL_NOISE_SEED=1 \
+  scripts/slurm/smoke_proxy_rm.sbatch
+```
+
+After that passes, train the full noisy 44M proxy on scratch. Keep the label
+noise seed fixed when varying `RM_SEED` so weight initialization and data
+corruption are not silently confounded:
+
+```bash
+export JOB_ROOT=/storage/scratch1/0/$USER/rlhf-cuq
+export NOISY_RM_BASE=$JOB_ROOT/models/rm-pythia-44m-prompt-disjoint-label-noise-0p3
+export NOISY_RM=${NOISY_RM_BASE}_seed1
+
+sbatch \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",RM_SEED=1,RM_LABEL_NOISE_RATE=0.30,RM_LABEL_NOISE_SEED=1,RM_OUTPUT_BASE="$NOISY_RM_BASE",RM_CHECKSUM_DIR="$JOB_ROOT/checksums" \
+  scripts/slurm/train_proxy_rm.sbatch
+```
+
+The job writes `rm_label_noise_metadata.json` and the complete sorted
+`rm_label_noise_flipped_record_ids.txt`, embeds the same compact metadata in
+`config.json`, and includes both files in its checksum. Verify the completed
+checkpoint independently:
+
+```bash
+python scripts/validate_rm_label_noise.py \
+  --model-dir "$NOISY_RM" \
+  --rate 0.30 \
+  --seed 1
+```
+
+A noisy proxy has a different model fingerprint. Build new CPDPO artifacts
+and use a new policy-output root; never reuse the noiseless geometry,
+calibration, policy runs, or evaluations:
+
+```bash
+export NOISY_CPDPO_ARTIFACTS=$JOB_ROOT/artifacts/cpdpo/proxy_rm_44m_label_noise_0p3_seed1
+export NOISY_OUTPUT=$JOB_ROOT/outputs/reward_overoptimization_proxy_rm_44m_label_noise_0p3
+
+ARTIFACT_JOB=$(sbatch --parsable \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",CPDPO_PROXY_RM_PATH="$NOISY_RM",CPDPO_ARTIFACT_DIR="$NOISY_CPDPO_ARTIFACTS" \
+  scripts/slurm/prepare_cpdpo_artifacts.sbatch | cut -d';' -f1)
+echo "$ARTIFACT_JOB"
+
+sbatch --array=0-2 \
+  --dependency="afterok:$ARTIFACT_JOB" \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",ROLLOUT_STEPS=100,CPDPO_PROXY_RM_PATH="$NOISY_RM",CPDPO_ARTIFACT_DIR="$NOISY_CPDPO_ARTIFACTS",CPDPO_OUTPUT_ROOT="$NOISY_OUTPUT" \
+  scripts/slurm/train_reward_overoptimization.sbatch
+```
+
+Those commands use the default 1.4B policy. To repeat the stabilized 70M-policy
+ablation instead, add the same profile declarations used by every existing
+70M method: `RLHF_POLICY_VARIANT=70m`, `RLHF_POLICY_PRECISION=fp32`,
+`RLHF_POLICY_LEARNING_RATE=1e-7`, and
+`RLHF_POLICY_NUM_LAYERS_UNFROZEN=1`. Keep
+`RLHF_POLICY_MAX_GRAD_NORM=1.0` as well, and choose another output root that
+identifies both the noisy proxy and the 70M FP32 profile.
+
+Offline evaluation must receive the same noisy proxy path and output root:
+
+```bash
+sbatch --array=0-2 \
+  --export=ALL,RLHF_JOB_STORAGE_ROOT="$JOB_ROOT",GOLD_RM_PATH="$GOLD_RM_PATH",CPDPO_PROXY_RM_PATH="$NOISY_RM",CPDPO_OUTPUT_ROOT="$NOISY_OUTPUT" \
+  scripts/slurm/evaluate_reward_overoptimization.sbatch
+```
+
+For CPDPOv2 or AdvPO, also rebuild their proxy-fingerprinted confidence and/or
+reference artifacts under noise-specific paths before training. The same
+isolation rule applies to the optional 1.4B proxy-RM launcher, which accepts
+the identical `RM_LABEL_NOISE_RATE` and `RM_LABEL_NOISE_SEED` controls.
+
 #### Additive matched-capacity ablation: 1.4B proxy RM
 
 This ablation branches the already downloaded `assets/initial_sft_policy`
